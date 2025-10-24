@@ -1,0 +1,53 @@
+plugins {
+    id 'java'
+    id 'application'
+    // 💡 1. Usa el plugin de JavaFX
+    id 'org.openjfx.javafxplugin' version '0.0.14' // Versión reciente
+}
+
+repositories {
+    mavenCentral()
+}
+
+// 💡 2. Configuración declarativa de JavaFX (El plugin hace el resto)
+javafx {
+    version = '21' // Usa la versión definida
+    modules = [ 'javafx.controls', 'javafx.fxml' ] // Solo los módulos necesarios
+}
+
+// 3. El plugin de JavaFX añade las dependencias automáticamente,
+//    ¡así que eliminamos las líneas manuales de JavaFX!
+
+dependencies {
+    // Base de datos y utilidades (¡Estos se mantienen!)
+    implementation 'org.postgresql:postgresql:42.6.0'
+    implementation 'com.zaxxer:HikariCP:5.0.1'
+    
+    // Utilidades
+    implementation 'com.fasterxml.jackson.core:jackson-core:2.15.2'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    
+    // Logging
+    implementation 'ch.qos.logback:logback-classic:1.4.11'
+    
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+}
+
+application {
+    mainClass = 'com.chat.ChatApplication'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+// 💡 4. ELIMINA las tareas 'run', 'jar' y 'fatJar' personalizadas.
+//    El plugin de JavaFX gestiona la tarea 'run' automáticamente.
+//    Si quieres un JAR ejecutable, el plugin tiene una tarea 'jlink' o 'jpackage' más adecuada.
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.chat.controller.ChatController">
+   <top>
+      <HBox spacing="10" style="-fx-background-color: #2d5ba8; -fx-padding: 10;">
+         <Label fx:id="usernameLabel" text="Usuario" textFill="white" />
+         <Label text="|" textFill="white" />
+         <Label fx:id="userCountLabel" text="Usuarios: 1" textFill="white" />
+         <Region HBox.hgrow="ALWAYS" />
+         <Button fx:id="logoutButton" text="Salir" onAction="#handleLogout" />
+      </HBox>
+   </top>
+   
+   <center>
+      <SplitPane dividerPositions="0.7">
+         <items>
+            <!-- Área de mensajes -->
+            <VBox spacing="10">
+               <ListView fx:id="messagesListView" VBox.vgrow="ALWAYS" />
+               
+               <!-- Panel de entrada -->
+               <HBox spacing="10" alignment="CENTER_LEFT">
+                  <TextArea fx:id="messageTextArea" promptText="Escribe tu mensaje..." HBox.hgrow="ALWAYS" 
+                           wrapText="true" maxHeight="80" />
+                  <VBox spacing="5">
+                     <Button fx:id="sendTextButton" text="📤 Texto" onAction="#handleSendText" 
+                            style="-fx-background-color: #4CAF50; -fx-text-fill: white;" />
+                     <Button fx:id="sendAudioButton" text="🎤 Audio" onAction="#handleSendAudio" 
+                            style="-fx-background-color: #2196F3; -fx-text-fill: white;" />
+                     <Button fx:id="callButton" text="📞 Llamar" onAction="#handleCall" 
+                            style="-fx-background-color: #4CAF50; -fx-text-fill: white;" />
+                     <Button fx:id="createGroupButton" text="crearGrupo" onAction="#handleCreateGroupButton" 
+                            style="-fx-background-color: #4d8b9bff; -fx-text-fill: white;" />
+                     <Button fx:id="joinGroupButton" text="Unirse al grupo" onAction="#handleJoinGroupButton" />      
+                  </VBox>
+               </HBox>
+            </VBox>
+            
+            <!-- Lista de usuarios conectados -->
+            <VBox spacing="10" style="-fx-padding: 10;">
+               <Label text="Usuarios Conectados" style="-fx-font-weight: bold;" />
+               <ListView fx:id="usersListView" VBox.vgrow="ALWAYS" />
+                <!-- Lista de grupos conectados -->
+               <Label text="Grupos" style="-fx-font-weight: bold;" />
+               <ListView fx:id="groupsListView" VBox.vgrow="ALWAYS" />
+            </VBox>
+         </items>
+      </SplitPane>
+   </center>
+</BorderPane>
