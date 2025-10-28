@@ -6,8 +6,7 @@ plugins {
 }
 
 group = 'com.chat'
-version = '1.0.0'
-sourceCompatibility = '11'
+version = '1.0-SNAPSHOT'
 
 repositories {
     mavenCentral()
@@ -16,26 +15,13 @@ repositories {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
-    
-    // Para JSON processing
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
-    
-    // Testing
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
 application {
-    mainClass = 'com.chat.MainApplication'
+    mainClass = 'com.chat.ChatApplication'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
-}
-
-// Configuración para correr en puerto específico
-bootRun {
-    systemProperties = [
-        'server.port': '8080'
-    ]
 }
