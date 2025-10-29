@@ -1,4 +1,4 @@
-package com.chat.model;
+package co.model;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -22,7 +22,7 @@ public class Message implements java.io.Serializable{
     
     //enum que indica tipo de mensaje
     public enum MessageType {
-        TEXT, AUDIO, SYSTEM, CALL,  CALL_INVITE, CALL_END, CALL_AUDIO_DATA, CREATE_GROUP,UPDATE_GROUPS, JOIN_GROUP
+        TEXT, CREATE_GROUP,UPDATE_GROUPS, JOIN_GROUP
     }
 
     //constructor 

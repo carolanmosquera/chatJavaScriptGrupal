@@ -1,4 +1,4 @@
-package com.chat.model;
+package co.model;
 
 import java.io.Serializable;
 import java.util.ArrayList;

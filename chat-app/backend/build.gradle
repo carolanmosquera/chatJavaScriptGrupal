@@ -13,13 +13,20 @@ repositories {
 }
 
 dependencies {
+    // Añade la dependencia para WebSockets (librería simple)
+    implementation("org.java-websocket:Java-WebSocket:1.5.3")
+    
+    // Dependencia opcional para JSON (necesaria para enviar objetos a JavaScript)
+    // Usaremos Gson para serializar tus modelos Java a JSON
+    implementation("com.google.code.gson:gson:2.10.1")
+
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
 application {
-    mainClass = 'com.chat.ChatApplication'
+    mainClass.set("co.Main")
 }
 
 tasks.named('test') {
