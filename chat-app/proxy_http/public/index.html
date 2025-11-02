@@ -1,1 +1,30 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chat</title><link rel="stylesheet" href="style.css"></head><body><div class="app"><aside class="sidebar"><header><h2>ChatApp</h2><button id="createGroup">Create Group</button></header><div id="contacts"></div></aside><main class="main"><div id="chatHeader"></div><div id="messages" class="messages"></div><div class="composer"><input id="message" placeholder="Write a message..."/><button id="send">Send</button></div></main></div><script src="app.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatApp</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <header class="sidebar-header">
+                <h2>ChatApp</h2>
+                <button id="createGroup">+ Grupo</button>
+            </header>
+            <div id="contacts" class="contacts-list"></div>
+        </aside>
+        
+        <main class="main">
+            <div id="chatHeader" class="chat-header">Selecciona un contacto</div>
+            <div id="messages" class="messages"></div>
+            <div class="composer">
+                <input id="message" type="text" placeholder="Escribe un mensaje..." />
+                <button id="send">Enviar</button>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
