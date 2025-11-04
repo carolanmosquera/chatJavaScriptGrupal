@@ -4,8 +4,6 @@ import co.model.Message;
 import co.model.User;
 import co.model.UserGroups;
 import org.java_websocket.WebSocket;
-import org.java_websocket.handshake.ClientHandshake;
-import org.java_websocket.server.WebSocketServer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,8 +19,8 @@ public class ChatController {
     private final List<UserGroups> availableGroups;
 
     public ChatController() {
-        this.connectedUsers = new ConcurrentHashMap<WebSocket, User>();
-        this.availableGroups = new CopyOnWriteArrayList<UserGroups>();
+        this.connectedUsers = new ConcurrentHashMap<>();
+        this.availableGroups = new CopyOnWriteArrayList<>();
         
         // Grupo por defecto: "General"
         UserGroups general = new UserGroups("General");
@@ -95,7 +93,7 @@ public class ChatController {
     // Crea un mensaje especial con la lista de todos los grupos disponibles
     private Message createGroupsUpdateMessage() {
         Message updateMsg = new Message(null, "Lista de grupos actualizada", Message.MessageType.UPDATE_GROUPS);
-        updateMsg.setGroupList((ArrayList)availableGroups); // Usamos el ArrayList que definiste
+        updateMsg.setGroupList(new ArrayList<>(availableGroups)); // ✅ CORRECCIÓN
         return updateMsg;
     }
 }
