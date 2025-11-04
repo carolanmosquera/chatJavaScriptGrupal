@@ -18,7 +18,7 @@ let users = [];
 let messages = [];
 let frontendClients = new Set(); // Clientes conectados desde el frontend
 
-const BACKEND_WS = process.env.BACKEND_WS || 'ws://localhost:8887';
+const BACKEND_WS = process.env.BACKEND_WS || 'ws://172.30.175.33:8887';
 const ws = new WebSocket(BACKEND_WS);
 
 ws.on('open', () => console.log('Connected to backend ws at', BACKEND_WS));

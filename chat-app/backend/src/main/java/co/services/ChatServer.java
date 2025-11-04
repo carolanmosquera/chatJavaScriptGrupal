@@ -25,7 +25,7 @@ public class ChatServer extends WebSocketServer {
     private final ChatController controller; 
 
     public ChatServer(int port) {
-        super(new InetSocketAddress(port));
+        super(new InetSocketAddress("0.0.0.0", port));
         this.connections = Collections.synchronizedSet(new HashSet<>());
         // Inicializa el controlador de lógica
         this.controller = new ChatController(); 
