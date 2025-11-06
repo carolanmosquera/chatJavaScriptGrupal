@@ -3,6 +3,8 @@ package co.controllers;
 import co.model.Message;
 import co.model.User;
 import co.model.UserGroups;
+import co.services.ChatServer;
+
 import org.java_websocket.WebSocket;
 
 import java.util.ArrayList;
@@ -26,36 +28,70 @@ public class ChatController {
         UserGroups general = new UserGroups("General");
         availableGroups.add(general);
     }
+
+    public void setServer(ChatServer server) {
+        this.server = server;
+    }
     
     // Método principal para procesar los mensajes entrantes
-    public Message processMessage(WebSocket conn, Message msg) {
-        // Asigna el usuario de la conexión si es un mensaje de 'login' (o el primer mensaje)
+        public Message processMessage(WebSocket conn, Message msg) {
         if (!connectedUsers.containsKey(conn) && msg.getSender() != null) {
-            connectedUsers.put(conn, msg.getSender());
-            System.out.println("Usuario " + msg.getSender().getUsername() + " conectado.");
-            // Envía la lista de grupos al nuevo usuario
+            User user = msg.getSender();
+            connectedUsers.put(conn, user);
+            System.out.println("✅ Usuario " + user.getUsername() + " conectado desde: " + 
+                conn.getRemoteSocketAddress());
+            
+            // Notificar a todos sobre el nuevo usuario
+            Message joinMsg = new Message(user, user.getUsername() + " se ha unido al chat", Message.MessageType.TEXT);
+            broadcastMessage(joinMsg);
+            
             return createGroupsUpdateMessage(); 
         }
 
-        // Procesa el mensaje basado en su tipo
         switch (msg.getType()) {
             case TEXT:
-                // Reenviar el mensaje de texto a todos (por ahora)
-                return msg; 
+                System.out.println(" Mensaje de " + msg.getSender().getUsername() + ": " + msg.getContent());
+                broadcastMessage(msg); //  Enviar a TODOS los clientes
+                return msg;
                 
             case CREATE_GROUP:
-                return handleCreateGroup(msg);
+                Message groupMsg = handleCreateGroup(msg);
+                if (groupMsg != null) {
+                    broadcastMessage(groupMsg);
+                }
+                return groupMsg;
                 
             case JOIN_GROUP:
-                return handleJoinGroup(msg);
+                Message joinMsg = handleJoinGroup(msg);
+                if (joinMsg != null) {
+                    broadcastMessage(joinMsg);
+                }
+                return joinMsg;
                 
             case UPDATE_GROUPS:
                 return createGroupsUpdateMessage();
 
             default:
-                // Manejar otros tipos de mensajes o errores
-                System.err.println("Tipo de mensaje desconocido: " + msg.getType());
+                System.err.println(" Tipo de mensaje desconocido: " + msg.getType());
                 return null;
+        }
+    }
+
+    //  NUEVO: Método para enviar mensajes a TODOS los clientes
+    private void broadcastMessage(Message message) {
+        if (server != null) {
+            server.broadcastMessage(message);
+        }
+    }
+
+    //  NUEVO: Manejar desconexión de usuarios
+    public void userDisconnected(WebSocket conn) {
+        User user = connectedUsers.remove(conn);
+        if (user != null) {
+            System.out.println("❌ Usuario desconectado: " + user.getUsername());
+            // Notificar a todos sobre la desconexión
+            Message leaveMsg = new Message(user, user.getUsername() + " ha abandonado el chat", Message.MessageType.TEXT);
+            broadcastMessage(leaveMsg);
         }
     }
     

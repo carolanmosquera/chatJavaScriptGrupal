@@ -21,10 +21,14 @@ public class ChatServer extends WebSocketServer {
     private final Gson gson;
     private final ChatController controller;
 
+   
+
     public ChatServer(int port) {
         super(new InetSocketAddress("0.0.0.0", port));
         this.connections = Collections.synchronizedSet(new HashSet<>());
         this.controller = new ChatController();
+
+        this.controller.setServer(this);
 
         // Registrar adaptadores de tiempo
         this.gson = new GsonBuilder()
@@ -52,25 +56,32 @@ public class ChatServer extends WebSocketServer {
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
         connections.remove(conn);
+        controller.userDisconnected(conn); // ✅ Notificar al controlador
         System.out.println("Conexión cerrada: " + conn.getRemoteSocketAddress());
     }
 
-    @Override
+      @Override
     public void onMessage(WebSocket conn, String messageJson) {
-        System.out.println("Mensaje recibido de " + conn.getRemoteSocketAddress() + ": " + messageJson);
+        System.out.println("📨 Mensaje recibido de " + conn.getRemoteSocketAddress() + ": " + messageJson);
         try {
             Message incomingMessage = gson.fromJson(messageJson, Message.class);
             Message response = controller.processMessage(conn, incomingMessage);
             
+            // ✅ El controlador ahora maneja el broadcast internamente
             if (response != null) {
-                // ✅ CORRECCIÓN: Enviar el mensaje procesado a TODOS los clientes conectados
-                String jsonResponse = gson.toJson(response);
-                broadcast(jsonResponse);
-                System.out.println("Mensaje enviado a todos los clientes: " + jsonResponse);
+                System.out.println("✅ Mensaje procesado: " + response.getType());
             }
         } catch (Exception e) {
             System.err.println("❌ Error procesando mensaje: " + e.getMessage());
-            e.printStackTrace();
+        }
+    }
+
+        // ✅ NUEVO: Método para que el controlador pueda hacer broadcast
+    public void broadcastMessage(Message message) {
+        if (message != null) {
+            String jsonResponse = gson.toJson(message);
+            broadcast(jsonResponse);
+            System.out.println("📤 Mensaje broadcast a " + connections.size() + " clientes: " + message.getType());
         }
     }
 
@@ -93,4 +104,6 @@ public class ChatServer extends WebSocketServer {
             }
         }
     }
+
+
 }

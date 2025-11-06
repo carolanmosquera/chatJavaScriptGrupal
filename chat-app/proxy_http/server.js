@@ -22,7 +22,14 @@ const BACKEND_WS = process.env.BACKEND_WS || 'ws://172.20.10.13:8887';
 
 const ws = new WebSocket(BACKEND_WS);
 
-ws.on('open', () => console.log('Connected to backend ws at', BACKEND_WS));
+ws.on('open', () => {
+  console.log(' Conectado al backend WebSocket en:', BACKEND_WS);
+  console.log(' Estado actual:');
+  console.log('   - Usuarios:', users.length);
+  console.log('   - Grupos:', groups.length);
+  console.log('   - Mensajes:', messages.length);
+  console.log('   - Clientes frontend:', frontendClients.size);
+});
 ws.on('message', (data) => {
   try {
     const msg = JSON.parse(data);
@@ -95,6 +102,10 @@ function broadcastToFrontend(data) {
   frontendClients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(message);
+      console.log(` Enviado a cliente ${index + 1}`);
+    }else {
+      console.log(`   ❌ Cliente ${index + 1} no está conectado, removiendo...`);
+      frontendClients.delete(client);
     }
   });
 }

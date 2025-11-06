@@ -33,7 +33,7 @@ function connectWebSocket() {
   
   ws.onopen = () => {
     console.log('✅ WebSocket conectado exitosamente');
-    // ✅ Enviar mensaje de login al conectarse
+    // Enviar mensaje de login al conectarse
     if (me) {
         const loginMsg = {
             sender: {
@@ -53,22 +53,35 @@ function connectWebSocket() {
       const data = JSON.parse(event.data);
       console.log('✅ Mensaje WebSocket recibido:', data);
       
-      // ✅ CORRECCIÓN: Manejar mensajes de texto del servidor
-      if (data.type === 'TEXT') {
-        console.log('📨 Nuevo mensaje de chat recibido:', data.content);
-        // Si hay un chat activo, recargar los mensajes
-        if (current) {
+      // ✅ CORRECCIÓN: Manejar TODOS los tipos de mensajes del proxy
+      switch(data.type) {
+        case 'NEW_MESSAGE':
+          console.log('📨 Nuevo mensaje recibido:', data.message?.content);
+          // Si el mensaje es relevante para el chat actual, recargar mensajes
+          if (shouldDisplayMessage(data.message)) {
             loadMessages();
-        } else {
-            // Si no hay chat activo, recargar contactos para mostrar notificaciones
-            loadContacts();
-        }
-      } else if (data.type === 'UPDATE_GROUPS') {
-        console.log('👥 Actualización de grupos recibida');
-        loadContacts();
-      } else if (data.type === 'CREATE_GROUP' || data.type === 'JOIN_GROUP') {
-        console.log('🔄 Actualización de estructura de chat');
-        loadContacts();
+          }
+          break;
+          
+        case 'GROUPS_UPDATE':
+          console.log('👥 Actualización de grupos recibida');
+          loadContacts();
+          break;
+          
+        case 'USERS_UPDATE':
+          console.log('👤 Actualización de usuarios recibida');
+          loadContacts();
+          break;
+          
+        case 'TEXT':
+          console.log('💬 Mensaje TEXT recibido:', data.content);
+          loadMessages();
+          break;
+          
+        default:
+          console.log('📦 Mensaje de tipo desconocido:', data.type);
+          // Por seguridad, recargar mensajes si hay un chat activo
+          if (current) loadMessages();
       }
     } catch (e) {
       console.error('❌ Error procesando mensaje WebSocket:', e);
@@ -84,6 +97,28 @@ function connectWebSocket() {
     console.log('🔌 WebSocket desconectado, reconectando en 3 segundos...');
     setTimeout(connectWebSocket, 3000);
   };
+}
+
+// ✅ NUEVA FUNCIÓN: Determinar si un mensaje debe mostrarse en el chat actual
+function shouldDisplayMessage(message) {
+  if (!current || !message) return false;
+  
+  const senderName = message.sender?.username || message.sender;
+  const targetGroup = message.nombreGrupo;
+  const targetUser = message.target;
+  
+  // Si es un mensaje de grupo y estamos en ese grupo
+  if (current.type === 'group' && targetGroup === current.name) {
+    return true;
+  }
+  
+  // Si es un mensaje privado y estamos chateando con esa persona
+  if (current.type === 'user') {
+    return (senderName === current.name && targetUser === me) || 
+           (senderName === me && targetUser === current.name);
+  }
+  
+  return false;
 }
 
 async function start(){
@@ -205,7 +240,7 @@ document.getElementById('send').onclick = async () => {
   const messageText = text;
   document.getElementById('message').value = '';
   
-  // ✅ Enviar mensaje a través de WebSocket
+  // Preparar el mensaje para el backend
   const messageData = {
     sender: {
       username: me,
@@ -216,15 +251,26 @@ document.getElementById('send').onclick = async () => {
     timestamp: new Date().toISOString()
   };
   
+  // ✅ AGREGAR información de destino basada en el tipo de chat
+  if (current.type === 'group') {
+    messageData.nombreGrupo = current.name;
+  } else if (current.type === 'user') {
+    messageData.target = current.name;
+  }
+  
+  console.log('📤 Enviando mensaje:', messageData);
+  
+  // Intentar enviar via WebSocket primero
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(messageData));
-    console.log('📤 Mensaje enviado via WebSocket:', messageData);
+    console.log('✅ Mensaje enviado via WebSocket');
     
-    // Recargar mensajes después de un breve delay para ver el mensaje propio
-    setTimeout(loadMessages, 300);
+    // Mostrar mensaje localmente inmediatamente (feedback rápido)
+    displayLocalMessage(messageText, true);
+    
   } else {
     console.error('❌ WebSocket no está conectado, usando HTTP como fallback');
-    // Fallback a HTTP si WebSocket no está disponible
+    // Fallback a HTTP
     try {
       await apiPost('/send', { 
         from: me, 
@@ -232,13 +278,33 @@ document.getElementById('send').onclick = async () => {
         type: current.type, 
         text: messageText 
       });
-      await loadMessages();
+      // Recargar mensajes después de enviar
+      setTimeout(loadMessages, 300);
     } catch (error) {
       console.error('❌ Error enviando mensaje via HTTP:', error);
       alert('Error enviando mensaje. Verifica la conexión.');
     }
   }
 };
+
+// ✅ NUEVA FUNCIÓN: Mostrar mensaje localmente inmediatamente
+function displayLocalMessage(text, isOwn = true) {
+  if (!current) return;
+  
+  const box = document.getElementById('messages');
+  const d = document.createElement('div');
+  d.className = 'message' + (isOwn ? ' my-message' : ' other-message');
+  
+  const showSender = !isOwn || (current && current.type === 'group');
+  
+  d.innerHTML = `
+    ${showSender && !isOwn ? '<div class="message-sender">' + escapeHtml(me) + '</div>' : ''}
+    <div class="message-content">${escapeHtml(text)}</div>
+  `;
+  
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
 
 // Permitir enviar con Enter
 document.getElementById('message').addEventListener('keypress', (e) => {
