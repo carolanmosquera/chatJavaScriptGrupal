@@ -22,7 +22,7 @@ public class Message implements java.io.Serializable{
     
     //enum que indica tipo de mensaje
     public enum MessageType {
-        TEXT, CREATE_GROUP,UPDATE_GROUPS, JOIN_GROUP
+        TEXT, CREATE_GROUP,UPDATE_GROUPS, JOIN_GROUP, UPDATE_USERS, USER_CONNECTED, USER_DISCONNECTED
     }
 
     //constructor 

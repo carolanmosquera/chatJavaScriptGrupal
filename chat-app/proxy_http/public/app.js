@@ -2,7 +2,9 @@ const API = '/api';
 let me = null;
 let contacts = [];
 let current = null;
-let ws = null; // WebSocket connection
+let ws = null;
+let isSending = false;
+let lastMessagesHash = ''; // ✅ Para detectar cambios en mensajes
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -10,8 +12,19 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-async function apiGet(path){ const r=await fetch(API+path); return r.json(); }
-async function apiPost(path, body){ const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); return r.json(); }
+async function apiGet(path){ 
+    const r = await fetch(API + path); 
+    return r.json(); 
+}
+
+async function apiPost(path, body){ 
+    const r = await fetch(API + path, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }); 
+    return r.json(); 
+}
 
 function connectWebSocket() {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -30,9 +43,18 @@ function connectWebSocket() {
       console.log('✅ Mensaje WebSocket recibido:', data);
       
       if (data.type === 'NEW_MESSAGE') {
-        console.log('📨 Nuevo mensaje detectado, recargando mensajes...');
-        // Lógica eliminada: Siempre se recargan los mensajes para reflejar la actualización.
-        loadMessages();
+        console.log('📨 Nuevo mensaje detectado');
+        
+        // ✅ CORRECCIÓN: Verificar si el mensaje es para el chat actual
+        if (current && shouldReloadMessages(data, current, me)) {
+          console.log('🔄 Recargando mensajes del chat actual...');
+          loadMessages();
+        } else {
+          console.log('ℹ️ Mensaje para otro chat, no recargar');
+          // Solo actualizar lista de contactos para mostrar notificación
+          loadContacts();
+        }
+        
       } else if (data.type === 'GROUPS_UPDATE') {
         console.log('👥 Actualización de grupos');
         loadContacts();
@@ -55,7 +77,49 @@ function connectWebSocket() {
   };
 }
 
-// La función handleNewMessage() ha sido eliminada ya que no es necesaria.
+// ✅ FUNCIÓN: Determinar si se deben recargar los mensajes
+function shouldReloadMessages(messageData, currentChat, currentUser) {
+  // Si es un mensaje de grupo y estamos en ese grupo
+  if (messageData.group && currentChat.type === 'group' && messageData.group === currentChat.name) {
+    return true;
+  }
+  
+  // Si es un mensaje privado y estamos en chat con ese usuario
+  if (messageData.to && currentChat.type === 'user') {
+    // El mensaje puede ser de nosotros al otro, o del otro a nosotros
+    const isMessageForThisChat = 
+      (messageData.from === currentChat.name && messageData.to === currentUser) ||
+      (messageData.from === currentUser && messageData.to === currentChat.name) ||
+      (messageData.to === currentChat.name);
+    
+    return isMessageForThisChat;
+  }
+  
+  // Mensaje de sistema o para otro chat
+  return false;
+}
+
+// ✅ NUEVA FUNCIÓN: Actualización inteligente de mensajes
+function startSmartMessageRefresh() {
+  setInterval(async () => {
+    if (!current) return; // Solo si hay un chat activo
+    
+    try {
+      // Verificar si hay mensajes nuevos sin recargar todo
+      const msgs = await apiGet(`/messages/${current.type}/${encodeURIComponent(current.name)}?user=${encodeURIComponent(me)}`);
+      const currentHash = JSON.stringify(msgs.map(m => m.content + m.timestamp));
+      
+      // Solo recargar si hay cambios reales
+      if (currentHash !== lastMessagesHash) {
+        console.log('🔄 Mensajes cambiaron, actualizando...');
+        await renderMessages(msgs);
+        lastMessagesHash = currentHash;
+      }
+    } catch (error) {
+      console.error('❌ Error en actualización inteligente:', error);
+    }
+  }, 3000); // Cada 3 segundos
+}
 
 async function start(){
   me = prompt('Tu nombre de usuario:');
@@ -69,8 +133,12 @@ async function start(){
   connectWebSocket();
   
   await loadContacts();
-  // Actualizar contactos cada 10 segundos (solo para nuevos usuarios/grupos)
-  setInterval(loadContacts, 10000);
+  
+  // ✅ CORRECCIÓN: Iniciar actualización inteligente
+  startSmartMessageRefresh();
+  
+  // Actualizar contactos cada 5 segundos
+  setInterval(loadContacts, 5000);
 }
 
 async function loadContacts(){
@@ -122,7 +190,23 @@ async function loadMessages(){
   if(!current) return;
   
   const msgs = await apiGet(`/messages/${current.type}/${encodeURIComponent(current.name)}?user=${encodeURIComponent(me)}`);
+  await renderMessages(msgs);
+}
+
+// ✅ NUEVA FUNCIÓN: Renderizar mensajes (separada de la carga)
+async function renderMessages(msgs) {
   const box = document.getElementById('messages');
+  if (!box) return;
+  
+  // Calcular hash actual para detectar cambios
+  const currentHash = JSON.stringify(msgs.map(m => m.content + m.timestamp));
+  
+  // Solo actualizar si hay cambios reales
+  if (currentHash === lastMessagesHash) {
+    return;
+  }
+  
+  lastMessagesHash = currentHash;
   box.innerHTML = '';
   
   msgs.forEach(m=>{
@@ -145,23 +229,44 @@ async function loadMessages(){
   box.scrollTop = box.scrollHeight;
 }
 
+// ✅ CORRECCIÓN: Prevenir envíos duplicados
 document.getElementById('send').onclick = async ()=>{
+  if (isSending) {
+    console.log('⏳ Mensaje ya enviándose, espera...');
+    return;
+  }
+  
   const text = document.getElementById('message').value.trim();
   if(!current || !text) return alert('Selecciona un contacto y escribe un mensaje');
   
+  isSending = true;
   document.getElementById('message').value='';
   
-  await apiPost('/send',{ from: me, to: current.name, type: current.type, text });
-  
-  // La recarga de mensajes se gestionará a través del WebSocket para consistencia
-  // await loadMessages(); // Opcional: se puede quitar para depender 100% de WebSocket
+  try {
+    console.log('📤 Enviando mensaje...');
+    await apiPost('/send',{ from: me, to: current.name, type: current.type, text });
+    console.log('✅ Mensaje enviado via HTTP');
+    
+    // ✅ OPCIONAL: Recargar mensajes para feedback inmediato
+    await loadMessages();
+    
+  } catch (error) {
+    console.error('❌ Error enviando mensaje:', error);
+  } finally {
+    // ✅ Liberar el bloqueo
+    setTimeout(() => {
+      isSending = false;
+    }, 1000);
+  }
 };
 
 // Permitir enviar con Enter
 document.getElementById('message').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
-    e.preventDefault(); // Evitar salto de línea
-    document.getElementById('send').click();
+    e.preventDefault();
+    if (!isSending) {
+      document.getElementById('send').click();
+    }
   }
 });
 
