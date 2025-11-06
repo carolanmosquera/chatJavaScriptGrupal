@@ -20,6 +20,8 @@ public class ChatController {
     // Lista para almacenar los grupos de chat activos
     private final List<UserGroups> availableGroups;
 
+    private ChatServer server; // Referencia al servidor para hacer broadcast
+
     public ChatController() {
         this.connectedUsers = new ConcurrentHashMap<>();
         this.availableGroups = new CopyOnWriteArrayList<>();
