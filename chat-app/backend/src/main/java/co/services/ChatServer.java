@@ -61,8 +61,12 @@ public class ChatServer extends WebSocketServer {
         try {
             Message incomingMessage = gson.fromJson(messageJson, Message.class);
             Message response = controller.processMessage(conn, incomingMessage);
+            
             if (response != null) {
-                broadcast(response);
+                // ✅ CORRECCIÓN: Enviar el mensaje procesado a TODOS los clientes conectados
+                String jsonResponse = gson.toJson(response);
+                broadcast(jsonResponse);
+                System.out.println("Mensaje enviado a todos los clientes: " + jsonResponse);
             }
         } catch (Exception e) {
             System.err.println("❌ Error procesando mensaje: " + e.getMessage());
@@ -82,10 +86,11 @@ public class ChatServer extends WebSocketServer {
         setConnectionLostTimeout(0);
     }
 
-    public void broadcast(Message message) {
-        String json = gson.toJson(message);
+     public void broadcast(String message) {
         for (WebSocket conn : connections) {
-            conn.send(json);
+            if (conn.isOpen()) {
+                conn.send(message);
+            }
         }
     }
 }
