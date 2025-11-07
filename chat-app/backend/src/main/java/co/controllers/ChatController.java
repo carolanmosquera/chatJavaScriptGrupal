@@ -32,6 +32,9 @@ public class ChatController {
 
     // Método principal para procesar los mensajes entrantes
     public Message processMessage(WebSocket conn, Message msg) {
+
+        System.out.println("CONEXIÓN DE USER!!!!!!!!!!!");
+        System.out.println(conn.getRemoteSocketAddress());
         // ✅ CORRECCIÓN: Verificar que el tipo no sea null
         if (msg.getType() == null) {
             System.err.println("❌ Error: Tipo de mensaje es null. Mensaje: " + msg);
@@ -41,6 +44,7 @@ public class ChatController {
         // Asigna el usuario de la conexión si es un mensaje de 'login' (o el primer
         // mensaje)
         if (!connectedUsers.containsKey(conn) && msg.getSender() != null) {
+            System.out.println("Entre al método!!");
             return handleUserConnection(conn, msg.getSender()); // ✅ Usar nuevo método
         }
 

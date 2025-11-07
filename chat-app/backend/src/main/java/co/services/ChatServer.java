@@ -23,23 +23,23 @@ public class ChatServer extends WebSocketServer {
     private final ChatController controller;
 
     public ChatServer(int port) {
-        super(new InetSocketAddress("0.0.0.0", port));
+        super(new InetSocketAddress(port));
         this.connections = Collections.synchronizedSet(new HashSet<>());
         this.controller = new ChatController();
 
         this.gson = new GsonBuilder()
-                .registerTypeAdapter(LocalDateTime.class, 
-                    (JsonSerializer<LocalDateTime>) (src, typeOfSrc, context) ->
-                        new JsonPrimitive(src.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)))
-                .registerTypeAdapter(LocalDateTime.class, 
-                    (JsonDeserializer<LocalDateTime>) (json, typeOfT, context) ->
-                        LocalDateTime.parse(json.getAsString(), DateTimeFormatter.ISO_LOCAL_DATE_TIME))
-                .registerTypeAdapter(LocalDate.class, 
-                    (JsonSerializer<LocalDate>) (src, typeOfSrc, context) ->
-                        new JsonPrimitive(src.format(DateTimeFormatter.ISO_LOCAL_DATE)))
-                .registerTypeAdapter(LocalDate.class, 
-                    (JsonDeserializer<LocalDate>) (json, typeOfT, context) ->
-                        LocalDate.parse(json.getAsString(), DateTimeFormatter.ISO_LOCAL_DATE))
+                .registerTypeAdapter(LocalDateTime.class,
+                        (JsonSerializer<LocalDateTime>) (src, typeOfSrc,
+                                context) -> new JsonPrimitive(src.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)))
+                .registerTypeAdapter(LocalDateTime.class,
+                        (JsonDeserializer<LocalDateTime>) (json, typeOfT, context) -> LocalDateTime
+                                .parse(json.getAsString(), DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+                .registerTypeAdapter(LocalDate.class,
+                        (JsonSerializer<LocalDate>) (src, typeOfSrc,
+                                context) -> new JsonPrimitive(src.format(DateTimeFormatter.ISO_LOCAL_DATE)))
+                .registerTypeAdapter(LocalDate.class,
+                        (JsonDeserializer<LocalDate>) (json, typeOfT, context) -> LocalDate.parse(json.getAsString(),
+                                DateTimeFormatter.ISO_LOCAL_DATE))
                 .create();
     }
 
@@ -62,7 +62,7 @@ public class ChatServer extends WebSocketServer {
         try {
             Message incomingMessage = gson.fromJson(messageJson, Message.class);
             Message response = controller.processMessage(conn, incomingMessage);
-            
+
             if (response != null) {
                 // ✅ CORRECCIÓN: Pasar también la conexión del remitente
                 sendToRelevantUsers(response, incomingMessage, conn);
@@ -76,7 +76,7 @@ public class ChatServer extends WebSocketServer {
     // ✅ CORREGIDO: Recibir la conexión del remitente
     private void sendToRelevantUsers(Message response, Message originalMessage, WebSocket senderConn) {
         String json = gson.toJson(response);
-        
+
         switch (response.getType()) {
             case TEXT:
                 // ✅ CORRECCIÓN: Obtener el usuario remitente de la conexión
@@ -87,95 +87,54 @@ public class ChatServer extends WebSocketServer {
                     System.err.println("❌ No se pudo obtener el usuario remitente");
                 }
                 break;
-                
+
             case UPDATE_GROUPS:
             case UPDATE_USERS:
                 System.out.println("📢 Enviando actualización a todos los usuarios");
                 broadcast(json);
                 break;
-                
+
             case CREATE_GROUP:
             case JOIN_GROUP:
                 broadcast(json);
                 break;
-                
+
             default:
                 System.out.println("⚠️ Tipo no manejado: " + response.getType());
                 break;
         }
     }
 
-    // ✅ NUEVO MÉTODO: Manejar mensajes de texto específicamente
     private void handleTextMessage(Message response, Message originalMessage, String senderUsername, String json) {
         System.out.println("💬 Procesando mensaje de " + senderUsername);
-        
-        // ✅ Estrategia 1: Buscar información del destinatario en el JSON original
-        String targetUser = extractTargetUserFromJson(originalMessage, senderUsername);
-        
-        if (targetUser != null) {
-            // ✅ MENSAJE PRIVADO: Enviar solo al remitente y destinatario
-            System.out.println("📨 Mensaje privado de " + senderUsername + " para " + targetUser);
-            sendToUser(senderUsername, json); // Al remitente
-            sendToUser(targetUser, json);     // Al destinatario
-        } 
-        // ✅ Estrategia 2: Si es mensaje de grupo
-        else if (originalMessage.getGroup() != null) {
+
+        // ✅ Si el mensaje pertenece a un grupo
+        if (originalMessage.getGroup() != null && originalMessage.getGroup().getNombreGrupo() != null) {
             String groupName = originalMessage.getGroup().getNombreGrupo();
             System.out.println("👥 Mensaje de grupo en: " + groupName);
-            sendToGroup(groupName, json, senderUsername); // Excluir al remitente (ya se envió)
+            sendToGroup(groupName, json, senderUsername); // enviar a todos menos el remitente
+            sendToUser(senderUsername, json); // también al remitente
+            return;
         }
-        // ✅ Estrategia 3: Fallback seguro
-        else {
-            System.out.println("⚠️ No se pudo determinar destinatario, enviando solo al remitente");
-            sendToUser(senderUsername, json);
-        }
-    }
 
-    // ✅ NUEVO MÉTODO: Extraer el usuario destinatario del JSON del mensaje
-    private String extractTargetUserFromJson(Message originalMessage, String senderUsername) {
-        try {
-            // Intentar parsear el contenido como JSON para encontrar el campo "target"
-            JsonElement jsonElement = JsonParser.parseString(originalMessage.getContent());
-            if (jsonElement.isJsonObject()) {
-                JsonObject jsonObject = jsonElement.getAsJsonObject();
-                if (jsonObject.has("target")) {
-                    return jsonObject.get("target").getAsString();
-                }
-            }
-        } catch (Exception e) {
-            // Si falla el parsing, el contenido es texto plano
-            System.out.println("ℹ️ El contenido no es JSON, es texto plano: " + originalMessage.getContent());
+        // ✅ Si el mensaje tiene destinatario directo (mensajes privados)
+        String targetUser = originalMessage.getTarget();
+        if (targetUser != null) {
+            System.out.println("📨 Mensaje privado de " + senderUsername + " para " + targetUser);
+            sendToUser(senderUsername, json);
+            sendToUser(targetUser, json);
+            return;
         }
-        
-        // ✅ Buscar en otros campos del mensaje
-        // Revisar si hay un campo personalizado en el Message
-        if (originalMessage.getContent() != null && originalMessage.getContent().contains("\"target\"")) {
-            try {
-                // Intentar extraer del string del contenido
-                String content = originalMessage.getContent();
-                int targetIndex = content.indexOf("\"target\"");
-                if (targetIndex != -1) {
-                    int start = content.indexOf(":", targetIndex) + 1;
-                    int end = content.indexOf(",", start);
-                    if (end == -1) end = content.indexOf("}", start);
-                    if (end != -1) {
-                        String target = content.substring(start, end).replace("\"", "").trim();
-                        if (!target.isEmpty() && !target.equals(senderUsername)) {
-                            return target;
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                System.err.println("❌ Error extrayendo target del contenido: " + e.getMessage());
-            }
-        }
-        
-        return null;
+
+        // ✅ Si no hay destino claro (fallback)
+        System.out.println("⚠️ No se pudo determinar destinatario, enviando solo al remitente");
+        sendToUser(senderUsername, json);
     }
 
     // ✅ MEJORADO: Enviar a usuario específico con logs
     private void sendToUser(String username, String message) {
         boolean sent = false;
+        System.out.println("TODOS LOS USERS: "+connections);
         for (WebSocket conn : connections) {
             User user = controller.getUserForConnection(conn);
             if (user != null && user.getUsername().equals(username)) {
@@ -221,8 +180,8 @@ public class ChatServer extends WebSocketServer {
 
     @Override
     public void onError(WebSocket conn, Exception ex) {
-        System.err.println("Error en la conexión " + 
-            (conn != null ? conn.getRemoteSocketAddress() : "desconocida") + ": " + ex.getMessage());
+        System.err.println("Error en la conexión " +
+                (conn != null ? conn.getRemoteSocketAddress() : "desconocida") + ": " + ex.getMessage());
     }
 
     @Override

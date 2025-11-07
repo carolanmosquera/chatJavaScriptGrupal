@@ -9,7 +9,7 @@ public class UserGroups implements Serializable {
     private List<User> listaUsuarios;
     private String nombreGrupo;
 
-    public UserGroups( String nombreGrupo) {
+    public UserGroups(String nombreGrupo) {
         this.listaUsuarios = new ArrayList<User>();
         this.nombreGrupo = nombreGrupo;
     }
@@ -30,35 +30,27 @@ public class UserGroups implements Serializable {
         this.nombreGrupo = nombreGrupo;
     }
 
-    public void addUser(User nuevoUsuario){
+    public void addUser(User nuevoUsuario) {
         listaUsuarios.add(nuevoUsuario);
     }
 
     public User buscarUsuario(String name) {
-    for (int i = 0; i < listaUsuarios.size(); i++) {
-        if (listaUsuarios.get(i).getUsername().equals(name)) {
-            return listaUsuarios.get(i);
+        for (int i = 0; i < listaUsuarios.size(); i++) {
+            if (listaUsuarios.get(i).getUsername().equals(name)) {
+                return listaUsuarios.get(i);
+            }
         }
-    }
-    return null;
+        return null;
     }
 
-    public void deleteUser(String name){
+    public void deleteUser(String name) {
 
         listaUsuarios.remove(buscarUsuario(name));
 
     }
 
-     @Override
+    @Override
     public String toString() {
         return nombreGrupo + " (" + listaUsuarios.size() + " miembros)";
     }
 }
-
-    
-
-    
-
-    
-    
-
