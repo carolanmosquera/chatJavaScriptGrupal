@@ -3,7 +3,9 @@ let me = null;
 let contacts = [];
 let current = null;
 let isSending = false;
-let lastMessagesHash = ''; // ✅ Para detectar cambios en mensajes
+let lastMessageId = null;
+let pollingInterval = null;
+let lastMessagesHash = null;
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -13,6 +15,7 @@ function escapeHtml(text) {
 
 async function apiGet(path) {
   const r = await fetch(API + path);
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
   return r.json();
 }
 
@@ -22,131 +25,91 @@ async function apiPost(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  return r.json();
-}
-
-function connectWebSocket() {
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${wsProtocol}//${window.location.host}?username=${encodeURIComponent(me)}`;
-  const ws = new WebSocket(wsUrl);
-
-  console.log('🔌 Conectando WebSocket a:', wsUrl);
-
-  ws.onopen = () => {
-    console.log('✅ WebSocket conectado exitosamente');
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      console.log('✅ Mensaje WebSocket recibido:', data);
-
-      if (data.type === 'NEW_MESSAGE') {
-        console.log('📨 Nuevo mensaje detectado');
-
-        // ✅ CORRECCIÓN: Verificar si el mensaje es para el chat actual
-        if (current && shouldReloadMessages(data, current, me)) {
-          console.log('🔄 Recargando mensajes del chat actual...');
-          loadMessages();
-        } else {
-          console.log('ℹ️ Mensaje para otro chat, no recargar');
-          // Solo actualizar lista de contactos para mostrar notificación
-          loadContacts();
-        }
-
-      } else if (data.type === 'GROUPS_UPDATE') {
-        console.log('👥 Actualización de grupos');
-        loadContacts();
-      } else if (data.type === 'USERS_UPDATE') {
-        console.log('👤 Actualización de usuarios');
-        loadContacts();
-      }
-    } catch (e) {
-      console.error('❌ Error procesando mensaje WebSocket:', e);
-    }
-  };
-
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
-
-  ws.onclose = () => {
-    console.log('WebSocket desconectado, reconectando...');
-    setTimeout(connectWebSocket, 3000);
-  };
-}
-
-// ✅ FUNCIÓN: Determinar si se deben recargar los mensajes
-function shouldReloadMessages(messageData, currentChat, currentUser) {
-  const msg = messageData.message || messageData; // por compatibilidad
-  const from = msg.sender?.username || msg.sender;
-  const to = msg.target;
-  const group = msg.nombreGrupo;
-
-  // Mensajes grupales
-  if (group && currentChat.type === 'group' && group === currentChat.name) return true;
-
-  // Privados
-  if (to && currentChat.type === 'user') {
-    return (
-      (from === currentChat.name && to === currentUser) ||
-      (from === currentUser && to === currentChat.name)
-    );
+  const data = await r.json();
+  if (!r.ok) {
+    const errorMsg = data.error || `HTTP ${r.status}: ${r.statusText}`;
+    throw new Error(errorMsg);
   }
-
-  return false;
+  return data;
 }
 
+async function checkForUpdates() {
+  if (!me) return;
 
-// ✅ NUEVA FUNCIÓN: Actualización inteligente de mensajes
-function startSmartMessageRefresh() {
-  setInterval(async () => {
-    if (!current) return; // Solo si hay un chat activo
-
-    try {
-      // Verificar si hay mensajes nuevos sin recargar todo
-      const msgs = await apiGet(`/messages/${current.type}/${encodeURIComponent(current.name)}?user=${encodeURIComponent(me)}`);
-      const currentHash = JSON.stringify(msgs.map(m => m.content + m.timestamp));
-
-      // Solo recargar si hay cambios reales
-      if (currentHash !== lastMessagesHash) {
-        console.log('🔄 Mensajes cambiaron, actualizando...');
-        await renderMessages(msgs);
-        lastMessagesHash = currentHash;
+  try {
+    if (current) {
+      const result = await apiGet(`/check-updates?user=${encodeURIComponent(me)}&lastMessageId=${lastMessageId || ''}&chatType=${current.type}&chatName=${encodeURIComponent(current.name)}`);
+      
+      if (result.hasUpdates) {
+        console.log(`🔄 ${result.newMessagesCount} mensaje(s) nuevo(s) detectado(s) en el chat actual`);
+        await loadMessages();
       }
-    } catch (error) {
-      console.error('❌ Error en actualización inteligente:', error);
+    } else {
+      await apiGet(`/check-updates?user=${encodeURIComponent(me)}`);
     }
-  }, 3000); // Cada 3 segundos
+  } catch (error) {
+    console.error('❌ Error verificando actualizaciones:', error);
+  }
+}
+
+function startPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+  }
+  
+  pollingInterval = setInterval(checkForUpdates, 2000);
+  console.log('✅ Polling HTTP iniciado (cada 2 segundos)');
+}
+
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+    console.log('⏸️ Polling HTTP detenido');
+  }
 }
 
 async function start() {
   me = prompt('Tu nombre de usuario:');
-  if (!me) { alert('Se requiere un nombre de usuario'); return; }
-  await apiPost('/register', { username: me });
+  if (!me) {
+    alert('Se requiere un nombre de usuario');
+    return;
+  }
+  
+  try {
+    await apiPost('/register', { username: me });
+    console.log(`✅ Usuario registrado: ${me}`);
 
-  // Mostrar el nombre del usuario en la barra lateral
-  document.querySelector('.sidebar-header h2').innerHTML = `ChatApp<br><small style="font-size:12px; font-weight:400; color:#65676b;">👤 ${me}</small>`;
+    document.querySelector('.sidebar-header h2').innerHTML = `ChatApp<br><small style="font-size:12px; font-weight:400; color:#65676b;">👤 ${me}</small>`;
 
-  // Conectar WebSocket para recibir mensajes en tiempo real
-  connectWebSocket();
+    startPolling();
 
-  await loadContacts();
+    await loadContacts();
 
-  // ✅ CORRECCIÓN: Iniciar actualización inteligente
-  startSmartMessageRefresh();
-
-  // Actualizar contactos cada 5 segundos
-  setInterval(loadContacts, 5000);
+    setInterval(loadContacts, 5000);
+  } catch (error) {
+    console.error('❌ Error al iniciar:', error);
+    alert('Error al conectar con el servidor');
+  }
 }
 
 async function loadContacts() {
-  const users = await apiGet('/users?user=' + encodeURIComponent(me));
-  const groups = await apiGet('/groups?user=' + encodeURIComponent(me));
-  contacts = [];
-  users.forEach(u => contacts.push({ type: 'user', name: u }));
-  groups.forEach(g => contacts.push({ type: 'group', name: g.name, members: g.members || [] }));
-  renderContacts();
+  try {
+    const users = await apiGet('/users?user=' + encodeURIComponent(me));
+    const groups = await apiGet('/groups?user=' + encodeURIComponent(me));
+    
+    contacts = [];
+    users.forEach(u => contacts.push({ type: 'user', name: u }));
+    groups.forEach(g => contacts.push({ 
+      type: 'group', 
+      name: g.name, 
+      members: g.members || [] 
+    }));
+    
+    renderContacts();
+  } catch (error) {
+    console.error('❌ Error cargando contactos:', error);
+  }
 }
 
 function renderContacts() {
@@ -155,7 +118,7 @@ function renderContacts() {
   contacts.forEach(c => {
     const el = document.createElement('div');
     el.className = 'contact' + (current && current.type === c.type && current.name === c.name ? ' active' : '');
-    el.textContent = c.type === 'group' ? '👥 ' + c.name : c.name;
+    el.textContent = c.type === 'group' ? '👥 ' + c.name : '💬 ' + c.name;
     el.onclick = () => selectContact(c);
     container.appendChild(el);
   });
@@ -165,11 +128,13 @@ async function selectContact(c) {
   current = c;
   renderContacts();
 
-  // Actualizar header con información detallada
   const header = document.getElementById('chatHeader');
   if (c.type === 'group') {
     const memberCount = c.members ? c.members.length : 0;
-    const memberNames = c.members ? c.members.map(m => m.username || m).join(', ') : '';
+    const memberNames = c.members ? c.members.map(m => {
+      const username = m.username || m;
+      return username === me ? 'Me' : username;
+    }).join(', ') : '';
     header.innerHTML = `
       <div class="chat-title">👥 ${c.name}</div>
       <div class="chat-subtitle">${memberCount} miembros: ${memberNames}</div>
@@ -181,31 +146,45 @@ async function selectContact(c) {
     `;
   }
 
-  // Cargar mensajes existentes
+  lastMessagesHash = null;
   await loadMessages();
 }
 
 async function loadMessages() {
   if (!current) return;
 
-  const msgs = await apiGet(`/messages/${current.type}/${encodeURIComponent(current.name)}?user=${encodeURIComponent(me)}`);
-  await renderMessages(msgs);
+  try {
+    const msgs = await apiGet(`/messages/${current.type}/${encodeURIComponent(current.name)}?user=${encodeURIComponent(me)}`);
+    await renderMessages(msgs);
+    
+    if (msgs.length > 0) {
+      lastMessageId = msgs[msgs.length - 1].id;
+    }
+  } catch (error) {
+    console.error('❌ Error cargando mensajes:', error);
+  }
 }
 
-// ✅ NUEVA FUNCIÓN: Renderizar mensajes (separada de la carga)
 async function renderMessages(msgs) {
   const box = document.getElementById('messages');
   if (!box) return;
 
-  // Calcular hash actual para detectar cambios
-  const currentHash = JSON.stringify(msgs.map(m => m.content + m.timestamp));
+  const currentHash = JSON.stringify(msgs.map(m => ({
+    id: m.id,
+    content: m.content || m.text || '',
+    sender: m.sender?.username || m.sender,
+    dateTime: m.dateTime
+  })));
 
-  // Solo actualizar si hay cambios reales
   if (currentHash === lastMessagesHash) {
     return;
   }
 
   lastMessagesHash = currentHash;
+
+  const wasAtBottom = box.scrollHeight - box.scrollTop <= box.clientHeight + 50;
+  const previousScrollHeight = box.scrollHeight;
+
   box.innerHTML = '';
 
   msgs.forEach(m => {
@@ -215,20 +194,24 @@ async function renderMessages(msgs) {
 
     d.className = 'message' + (isMe ? ' my-message' : ' other-message');
 
-    // Solo mostrar el nombre del remitente si no es el usuario actual o si es un grupo
     const showSender = !isMe || (current && current.type === 'group');
 
     d.innerHTML = `
-      ${showSender ? '<div class="message-sender">' + senderName + '</div>' : ''}
+      ${showSender ? '<div class="message-sender">' + escapeHtml(senderName) + '</div>' : ''}
       <div class="message-content">${escapeHtml(m.content || m.text || '')}</div>
     `;
     box.appendChild(d);
   });
 
-  box.scrollTop = box.scrollHeight;
+  if (wasAtBottom) {
+    box.scrollTop = box.scrollHeight;
+  } else {
+    const newScrollHeight = box.scrollHeight;
+    const scrollDifference = newScrollHeight - previousScrollHeight;
+    box.scrollTop = box.scrollTop + scrollDifference;
+  }
 }
 
-// ✅ CORRECCIÓN: Prevenir envíos duplicados
 document.getElementById('send').onclick = async () => {
   if (isSending) {
     console.log('⏳ Mensaje ya enviándose, espera...');
@@ -236,30 +219,35 @@ document.getElementById('send').onclick = async () => {
   }
 
   const text = document.getElementById('message').value.trim();
-  if (!current || !text) return alert('Selecciona un contacto y escribe un mensaje');
+  if (!current || !text) {
+    alert('Selecciona un contacto y escribe un mensaje');
+    return;
+  }
 
   isSending = true;
   document.getElementById('message').value = '';
 
   try {
     console.log('📤 Enviando mensaje...');
-    await apiPost('/send', { from: me, to: current.name, type: current.type, text });
+    await apiPost('/send', { 
+      from: me, 
+      to: current.name, 
+      type: current.type, 
+      text 
+    });
     console.log('✅ Mensaje enviado via HTTP');
 
-    // ✅ OPCIONAL: Recargar mensajes para feedback inmediato
     await loadMessages();
-
   } catch (error) {
     console.error('❌ Error enviando mensaje:', error);
+    alert('Error al enviar el mensaje');
   } finally {
-    // ✅ Liberar el bloqueo
     setTimeout(() => {
       isSending = false;
     }, 1000);
   }
 };
 
-// Permitir enviar con Enter
 document.getElementById('message').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -270,19 +258,94 @@ document.getElementById('message').addEventListener('keypress', (e) => {
 });
 
 document.getElementById('createGroup').onclick = async () => {
-  const name = prompt('Group name');
-  if (!name) return;
-  const users = await apiGet('/users?user=' + encodeURIComponent(me));
-  const pick = prompt('Select members from connected users (comma-separated). Available: ' + users.join(', '));
-  const members = pick ? pick.split(',').map(s => s.trim()).filter(Boolean) : [];
-  if (!members.includes(me)) members.push(me);
-  await apiPost('/groups', { name, members, username: me });
-  await loadContacts();
+  try {
+    const name = prompt('Nombre del grupo:');
+    if (!name || !name.trim()) return;
+    
+    const availableUsers = await apiGet('/users?user=' + encodeURIComponent(me));
+    
+    if (availableUsers.length === 0) {
+      alert('No hay otros usuarios conectados para agregar al grupo');
+      return;
+    }
+
+    let membersList = '';
+    availableUsers.forEach((user, index) => {
+      membersList += `${index + 1}. ${user}\n`;
+    });
+    
+    const pick = prompt(
+      `Selecciona miembros escribiendo los números separados por comas (ej: 1,2,3)\n\nUsuarios disponibles:\n${membersList}`
+    );
+    
+    if (!pick || !pick.trim()) {
+      alert('Debes seleccionar al menos un miembro para el grupo');
+      return;
+    }
+
+    const selectedNumbers = pick.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0 && n <= availableUsers.length);
+    
+    if (selectedNumbers.length === 0) {
+      alert('No se seleccionaron miembros válidos');
+      return;
+    }
+
+    const members = selectedNumbers.map(num => availableUsers[num - 1]);
+    
+    const otherMembers = members.filter(m => m !== me);
+    if (otherMembers.length === 0) {
+      alert('Debes seleccionar al menos un miembro diferente a ti mismo');
+      return;
+    }
+    
+    const result = await apiPost('/groups', { name: name.trim(), members, username: me });
+    
+    if (result.ok) {
+      await loadContacts();
+    }
+  } catch (error) {
+    console.error('❌ Error creando grupo:', error);
+    const errorMsg = error.message || 'Error al crear el grupo';
+    if (errorMsg.includes('Debe haber al menos')) {
+      alert('Debe haber al menos un miembro diferente al creador del grupo');
+    } else if (errorMsg.includes('Ya existe')) {
+      alert('Ya existe un grupo con ese nombre');
+    } else if (errorMsg.includes('conectado')) {
+      alert('Todos los miembros deben estar conectados');
+    } else {
+      alert('Error al crear el grupo: ' + errorMsg);
+    }
+  }
 };
 
-// Limpiar WebSocket cuando se cierra la ventana
-window.addEventListener('beforeunload', () => {
-  if (ws) ws.close();
+window.addEventListener('beforeunload', async () => {
+  stopPolling();
+  if (me) {
+    try {
+      await fetch(API + '/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: me })
+      });
+    } catch (error) {
+      console.error('Error al desconectar:', error);
+    }
+  }
+});
+
+window.addEventListener('unload', async () => {
+  if (me) {
+    try {
+      await fetch(API + '/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: me }),
+        keepalive: true
+      });
+    } catch (error) {
+      console.error('Error al desconectar:', error);
+    }
+  }
 });
 
 start();
