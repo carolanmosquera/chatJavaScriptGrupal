@@ -3,9 +3,11 @@ package server;
 import Chat.*;
 import model.*;
 import com.zeroc.Ice.Current;
+import com.zeroc.IceInternal.Incoming;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CompletionStage;
 
 public class ChatServiceImpl implements ChatService, Subject {
     
@@ -20,20 +22,43 @@ public class ChatServiceImpl implements ChatService, Subject {
     private int messageCounter = 0;
     private int groupCounter = 0;
 
+    // ========== RESOLVER CONFLICTOS DE INTERFACES ==========
+    
+    @Override
+    public CompletionStage<com.zeroc.Ice.OutputStream> _iceDispatch(Incoming in, Current current) 
+            throws com.zeroc.Ice.UserException {
+        try {
+            return ChatService.super._iceDispatch(in, current);
+        } catch (com.zeroc.Ice.OperationNotExistException e) {
+            return Subject.super._iceDispatch(in, current);
+        }
+    }
+
+    @Override
+    public String ice_id(Current current) {
+        return ChatService.super.ice_id(current);
+    }
+
+    @Override
+    public String[] ice_ids(Current current) {
+        Set<String> allIds = new HashSet<>();
+        allIds.addAll(Arrays.asList(ChatService.super.ice_ids(current)));
+        allIds.addAll(Arrays.asList(Subject.super.ice_ids(current)));
+        return allIds.toArray(new String[0]);
+    }
+
     // ========== MÉTODOS DE USUARIOS ==========
     
     @Override
     public synchronized UserDTO joinChat(String username, Current current) {
         String userId = "user_" + (++userCounter);
         
-        // Crear usuario usando el modelo existente
         User newUser = new User(userId, username);
         newUser.setOnline(true);
         newUser.setConnectedAt(System.currentTimeMillis());
         
         users.put(userId, newUser);
         
-        // Crear mensaje de sistema
         Message systemMsg = new Message(
             "msg_" + (++messageCounter),
             "system",
@@ -43,12 +68,10 @@ public class ChatServiceImpl implements ChatService, Subject {
         );
         messages.add(systemMsg);
         
-        // Notificar a todos los observadores
         notifyObservers();
         
         System.out.println("Usuario unido: " + username + " (ID: " + userId + ")");
         
-        // Retornar DTO
         return newUser.toDTO();
     }
 
@@ -58,7 +81,6 @@ public class ChatServiceImpl implements ChatService, Subject {
         if (user != null) {
             user.setOnline(false);
             
-            // Mensaje de sistema
             Message systemMsg = new Message(
                 "msg_" + (++messageCounter),
                 "system",
@@ -68,7 +90,6 @@ public class ChatServiceImpl implements ChatService, Subject {
             );
             messages.add(systemMsg);
             
-            // Remover de grupos
             for (UserGroup group : groups.values()) {
                 group.removeParticipant(user);
             }
@@ -95,7 +116,6 @@ public class ChatServiceImpl implements ChatService, Subject {
             return;
         }
 
-        // Convertir MessageTypeEnum de Ice a MessageType del modelo
         MessageType messageType = MessageType.fromIceEnum(type);
 
         Message message = new Message(
@@ -125,18 +145,13 @@ public class ChatServiceImpl implements ChatService, Subject {
     public synchronized GroupDTO createGroup(String groupName, String creatorId, Current current) {
         String groupId = "group_" + (++groupCounter);
         
-        // Crear grupo usando el modelo existente
         UserGroup newGroup = new UserGroup(groupId, groupName);
         
-        // Agregar el creador al grupo
         User creator = users.get(creatorId);
         if (creator != null) {
             newGroup.addParticipant(creator);
-            
-            // Agregar grupo al mapa de grupos del usuario
             creator.getGroups().put(groupId, newGroup);
             
-            // Mensaje del sistema
             Message systemMsg = new Message(
                 "msg_" + (++messageCounter),
                 "system",
@@ -165,7 +180,6 @@ public class ChatServiceImpl implements ChatService, Subject {
             return;
         }
         
-        // Verificar si ya es miembro
         if (!group.hasParticipant(userId)) {
             group.addParticipant(user);
             user.getGroups().put(groupId, group);
@@ -246,7 +260,6 @@ public class ChatServiceImpl implements ChatService, Subject {
     }
 
     private void notifyObservers() {
-        // Convertir modelos a DTOs para Ice
         MessageDTO[] msgArray = messages.stream()
             .map(Message::toDTO)
             .toArray(MessageDTO[]::new);
@@ -267,58 +280,6 @@ public class ChatServiceImpl implements ChatService, Subject {
             }
         }
         
-        // Remover observers inválidos
         observers.removeAll(toRemove);
-    }
-
-    // ========== MÉTODOS AUXILIARES ==========
-    
-    /**
-     * Obtener usuario por ID
-     */
-    public User getUser(String userId) {
-        return users.get(userId);
-    }
-    
-    /**
-     * Obtener grupo por ID
-     */
-    public UserGroup getGroup(String groupId) {
-        return groups.get(groupId);
-    }
-    
-    /**
-     * Obtener todos los mensajes como modelos (no DTOs)
-     */
-    public List<Message> getAllMessages() {
-        return new ArrayList<>(messages);
-    }
-    
-    /**
-     * Obtener todos los usuarios como modelos (no DTOs)
-     */
-    public List<User> getAllUsers() {
-        return new ArrayList<>(users.values());
-    }
-    
-    /**
-     * Obtener mensajes filtrados por tipo
-     */
-    public List<Message> getMessagesByType(MessageType type) {
-        List<Message> filtered = new ArrayList<>();
-        for (Message msg : messages) {
-            if (msg.getType() == type) {
-                filtered.add(msg);
-            }
-        }
-        return filtered;
-    }
-    
-    /**
-     * Verificar si un usuario existe y está online
-     */
-    public boolean isUserOnline(String userId) {
-        User user = users.get(userId);
-        return user != null && user.isOnline();
     }
 }

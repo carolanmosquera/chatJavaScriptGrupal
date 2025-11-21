@@ -11,6 +11,18 @@ repositories {
     mavenCentral()
 }
 
+// Configurar el directorio de fuentes correctamente
+sourceSets {
+    main {
+        java {
+            srcDirs = ['user/src/main/java']
+        }
+        resources {
+            srcDirs = ['user/src/main/resources']
+        }
+    }
+}
+
 dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'com.zeroc:ice:3.7.9'
@@ -24,7 +36,7 @@ java {
 jar {
     manifest {
         attributes(
-                'Main-Class': 'Main'
+            'Main-Class': 'Main'
         )
     }
     from {

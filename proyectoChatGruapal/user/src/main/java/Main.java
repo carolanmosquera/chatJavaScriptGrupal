@@ -4,9 +4,11 @@ import server.ChatServiceImpl;
 public class Main {
     public static void main(String[] args) {
         int status = 0;
-        Communicator communicator = null;
+        final Communicator[] communicatorHolder = new Communicator[1];
         
         try {
+            Communicator communicator = null;
+            
             System.out.println("\n" + "=".repeat(50));
             System.out.println("  Inicializando Chat Server con ZeroC Ice");
             System.out.println("=".repeat(50));
@@ -23,6 +25,7 @@ public class Main {
             
             // Inicializar comunicador Ice
             communicator = Util.initialize(args, initData);
+            communicatorHolder[0] = communicator;
             
             System.out.println("\n✓ Comunicador Ice inicializado");
             
@@ -51,10 +54,10 @@ public class Main {
             System.out.println("\n" + "=".repeat(50));
             System.out.println("  SERVIDOR INICIADO CORRECTAMENTE");
             System.out.println("=".repeat(50));
-            System.out.println("\n📡 Endpoints disponibles:");
+            System.out.println("\n Endpoints disponibles:");
             System.out.println("   • TCP:       tcp -h localhost -p 10000");
             System.out.println("   • WebSocket: ws -h localhost -p 10001");
-            System.out.println("\n💡 Proxy para clientes:");
+            System.out.println("\n Proxy para clientes:");
             System.out.println("   ChatService:tcp -h localhost -p 10000");
             System.out.println("   ChatService:ws -h localhost -p 10001");
             System.out.println("\n" + "=".repeat(50));
@@ -64,13 +67,13 @@ public class Main {
             
             // Configurar shutdown hook para limpieza
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                System.out.println("\n\n🛑 Deteniendo servidor...");
-                if (communicator != null) {
+                System.out.println("\n\n Deteniendo servidor...");
+                if (communicatorHolder[0] != null) {
                     try {
-                        communicator.destroy();
+                        communicatorHolder[0].destroy();
                         System.out.println("✓ Servidor detenido correctamente");
-                    } catch (Exception e) {
-                        System.err.println("⚠ Error al detener el servidor: " + e.getMessage());
+                    } catch (java.lang.Exception e) {
+                        System.err.println(" Error al detener el servidor: " + e.getMessage());
                     }
                 }
             }));
@@ -79,18 +82,18 @@ public class Main {
             communicator.waitForShutdown();
             
         } catch (LocalException e) {
-            System.err.println("\n❌ Error local de Ice: " + e.getMessage());
+            System.err.println("\n Error local de Ice: " + e.getMessage());
             e.printStackTrace();
             status = 1;
-        } catch (Exception e) {
-            System.err.println("\n❌ Error general en el servidor: " + e.getMessage());
+        } catch (java.lang.Exception e) {
+            System.err.println("\n Error general en el servidor: " + e.getMessage());
             e.printStackTrace();
             status = 1;
         } finally {
-            if (communicator != null) {
+            if (communicatorHolder[0] != null) {
                 try {
-                    communicator.destroy();
-                } catch (Exception e) {
+                    communicatorHolder[0].destroy();
+                } catch (java.lang.Exception e) {
                     System.err.println("⚠ Error destruyendo comunicador: " + e.getMessage());
                     status = 1;
                 }
