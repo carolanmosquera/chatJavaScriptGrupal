@@ -8,7 +8,8 @@ import model.*;
 public class ChatServer {
 
     private int port;
-    private Set<String> userNames = new HashSet<>();
+    private Set<String> userNmesList = new HashSet<>();
+    private Set<User> userList = new HashSet<>();
     private Set<UserThread> userThreads = new HashSet<>();
 
     public ChatServer(int port) {
@@ -64,22 +65,39 @@ public class ChatServer {
      * Stores username of the newly connected client.
      */
     void addUserName(String userName) {
-        userNames.add(userName);
+        userNmesList.add(userName);
+        userList.add(new User(userName));
+    }
+
+    /**
+     * Method of searching user
+     */
+    User searchUser(String userName) {
+
+        for (User usuario : userList) {
+
+            if (usuario.getUsername().equals(userName)) {
+                return usuario;
+            }
+        }
+        return null;
+
     }
 
     /**
      * When a client is disconneted, removes the associated username and UserThread
      */
     void removeUser(String userName, UserThread aUser) {
-        boolean removed = userNames.remove(userName);
+        boolean removed = userNmesList.remove(userName);
+        userList.remove(searchUser(userName));
         if (removed) {
             userThreads.remove(aUser);
             System.out.println("The user " + userName + " quitted");
         }
     }
 
-    Set<String> getUserNames() {
-        return this.userNames;
+    Set<String> getUserNmesList() {
+        return this.userNmesList;
     }
 
     /**
@@ -87,6 +105,6 @@ public class ChatServer {
      * connected user)
      */
     boolean hasUsers() {
-        return !this.userNames.isEmpty();
+        return !this.userNmesList.isEmpty();
     }
 }

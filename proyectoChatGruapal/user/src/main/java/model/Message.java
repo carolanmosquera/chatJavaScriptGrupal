@@ -5,10 +5,9 @@ public class Message {
     private String senderId;
     private String senderName;
     private String content;
-    // private long timestamp;
-    private int type; // 0=TEXT, 1=SYSTEM
+    private MessageType type;
 
-    public Message(String id, String senderId, String senderName, String content, int type) {
+    public Message(String id, String senderId, String senderName, String content, MessageType type) {
         this.id = id;
         this.senderId = senderId;
         this.senderName = senderName;
@@ -53,11 +52,11 @@ public class Message {
     // public long getTimestamp() { return timestamp; }
     // public void setTimestamp(long timestamp) { this.timestamp = timestamp; }
 
-    public int getType() {
+    public MessageType getType() {
         return type;
     }
 
-    public void setType(int type) {
+    public void setType(MessageType type) {
         this.type = type;
     }
 }

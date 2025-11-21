@@ -27,24 +27,35 @@ public class WriteThread extends Thread {
 
         Scanner scanner = new Scanner(System.in);
 
-        //here its were the user register and enter its name 
+        // here its were the user register and enter its name
         System.out.print("\nEnter your name: ");
         String userName = scanner.nextLine();
-        
-        //with the name a object user its created
+
+        // with the name a object user its created
         User newUser = new User(userName);
         newUser.setUsername(userName);
-        //client its only using astring to reference User
+        // client its only using astring to reference User
         client.setUserName(newUser.getUsername());
 
-        //the name of the user its being sended to the server 
+        // the name of the user its being sended to the server
         writer.println(userName);
 
         String text;
 
         do {
-            //this is the method that is used by ther user to send messages 
+            // this is the method that is used by ther user to send messages
             System.out.print("[" + userName + "]: ");
+
+            // method of identification of type mesage
+            // switch (text) {
+            // case value:
+
+            // break;
+
+            // default:
+            // break;
+            // }
+
             text = scanner.nextLine();
             writer.println(text);
 

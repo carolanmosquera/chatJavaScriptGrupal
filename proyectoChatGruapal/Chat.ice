@@ -1,5 +1,12 @@
 module Chat {
     
+    // Enum para tipos de mensaje
+    enum MessageTypeEnum {
+        TEXT,
+        SYSTEM,
+        VOICE_CALL
+    };
+    
     // DTO para mensajes
     struct MessageDTO {
         string id;
@@ -7,7 +14,7 @@ module Chat {
         string senderName;
         string content;
         long timestamp;
-        int type; // 0=TEXT, 1=SYSTEM
+        MessageTypeEnum type;
     };
     
     // DTO para usuarios
@@ -15,6 +22,7 @@ module Chat {
         string id;
         string username;
         bool isOnline;
+        long connectedAt;
     };
     
     // Secuencias
@@ -36,7 +44,7 @@ module Chat {
     // Servicio principal del chat
     interface ChatService {
         UserDTO joinChat(string username);
-        void sendMessage(string userId, string content);
+        void sendMessage(string userId, string content, MessageTypeEnum type);
         MessageList getMessages();
         UserList getUsers();
         void leaveChat(string userId);
