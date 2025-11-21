@@ -3,6 +3,7 @@ package server;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import model.*;
  
 public class UserThread extends Thread {
     private Socket socket;
@@ -12,6 +13,7 @@ public class UserThread extends Thread {
     public UserThread(Socket socket, ChatServer server) {
         this.socket = socket;
         this.server = server;
+
     }
  
     public void run() {
@@ -24,6 +26,7 @@ public class UserThread extends Thread {
  
             printUsers();
  
+            //here its were the user its being added
             String userName = reader.readLine();
             server.addUserName(userName);
  

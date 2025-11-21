@@ -13,6 +13,7 @@ public class ReadThread extends Thread {
         this.client = client;
  
         try {
+            //it recibes the information of the writer
             InputStream input = socket.getInputStream();
             reader = new BufferedReader(new InputStreamReader(input));
         } catch (IOException ex) {
@@ -24,8 +25,10 @@ public class ReadThread extends Thread {
     public void run() {
         while (true) {
             try {
+                //it extracts the information of the reader
+                //System.out.println("FUNCIONA");
                 String response = reader.readLine();
-                System.out.println("\n" + response);
+                System.out.println("\n" + response + "PRUEBA : this is the response");
  
                 // prints the username after displaying the server's message
                 if (client.getUserName() != null) {
