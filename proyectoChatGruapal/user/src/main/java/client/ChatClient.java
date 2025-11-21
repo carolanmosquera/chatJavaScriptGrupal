@@ -21,7 +21,7 @@ public class ChatClient {
 
             System.out.println("Connected to the chat server");
 
-            //first we execute yhe reader and then the writer
+            // first we execute yhe reader and then the writer
             new ReadThread(socket, this).start();
             new WriteThread(socket, this).start();
 

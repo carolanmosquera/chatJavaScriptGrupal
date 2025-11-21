@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatApp - General Prototype</title>
+    <!-- Link to the stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Link to Font icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app">
+        <!-- SIDEBAR FOR CONTACTS AND GROUPS -->
+        <aside class="sidebar">
+            <header class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-comments"></i>
+                    ChatApp
+                </div>
+                <button id="createGroupBtn" class="icon-btn" title="Create new group">
+                    <i class="fas fa-users"></i>
+                </button>
+            </header>
+            
+            <div class="search-box">
+                <div class="search-wrapper">
+                    <i class="fas fa-search"></i>
+                    <input type="text" class="search-input" placeholder="Search or start a new chat...">
+                </div>
+            </div>
+
+            <!-- The contacts container is empty, ready to be filled dynamically -->
+            <div id="contacts" class="contacts-list">
+                <!-- Contacts will appear here when the backend is connected -->
+            </div>
+        </aside>
+        
+        <!-- MAIN CHAT AREA -->
+        <main class="main">
+            <header id="chatHeader" class="chat-header">
+                <div class="chat-header-info">
+                    <div class="chat-header-text">
+                        <h2 class="chat-title">Select a chat</h2>
+                        <span class="chat-subtitle">Your message history will appear here</span>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button class="icon-btn" title="Voice Call"><i class="fas fa-phone"></i></button>
+                </div>
+            </header>
+            
+            <div id="messages" class="messages">
+                <div class="messages-placeholder">
+                    <i class="fas fa-comment-dots"></i>
+                    <p>Messages you send and receive will be shown here.</p>
+                </div>
+            </div>
+            
+            <!-- MESSAGE COMPOSER AREA -->
+            <div class="composer">
+                <div class="input-container" id="normalInput">
+                    <input id="messageInput" type="text" class="message-input" placeholder="Type a message..." />
+                    <button class="icon-btn mic-btn" title="Record voice note"><i class="fas fa-microphone"></i></button>
+                    <button id="sendBtn" class="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
+                </div>
+
+                <div class="input-container recording" id="recordingInput" style="display: none;">
+                    <button class="icon-btn cancel-btn" title="Cancel"><i class="fas fa-times"></i></button>
+                    <div class="recording-indicator"></div>
+                    <span class="recording-time">00:00</span>
+                    <div class="recording-waveform">
+                        <div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div>
+                    </div>
+                    <button class="send-btn" title="Send voice note"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL FOR CREATING A GROUP (Hidden by default) -->
+    <div class="modal-overlay" id="createGroupModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Create a new group</h3>
+                <button class="modal-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="form-group">
+                <label>Group Name</label>
+                <input type="text" class="form-input" placeholder="e.g., Development Team">
+            </div>
+            <div class="form-group">
+                <label>Select Participants</label>
+                <div class="user-select-list">
+                    <!-- Empty container ready to be filled with real contacts -->
+                    <p class="placeholder-text">Available contacts to add to the group will appear here.</p>
+                </div>
+            </div>
+            <button class="btn-primary">
+                <i class="fas fa-plus"></i> Create Group
+            </button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            <!-- Voice recording UI logic -->
+            const micBtn = document.querySelector('.mic-btn');
+            const normalInput = document.getElementById('normalInput');
+            const recordingInput = document.getElementById('recordingInput');
+            const cancelRecordingBtn = recordingInput.querySelector('.cancel-btn');
+
+            micBtn.addEventListener('click', () => {
+                normalInput.style.display = 'none';
+                recordingInput.style.display = 'flex';
+            });
+
+            cancelRecordingBtn.addEventListener('click', () => {
+                recordingInput.style.display = 'none';
+                normalInput.style.display = 'flex';
+            });
+            
+            // Create group modal logic
+            const createGroupBtn = document.getElementById('createGroupBtn');
+            const createGroupModal = document.getElementById('createGroupModal');
+            const closeModalBtns = document.querySelectorAll('.modal-close, .btn-primary');
+
+            //Open the modal
+            createGroupBtn.addEventListener('click', () => {
+                createGroupModal.classList.add('active');
+            });
+
+            // Close the modal with buttons
+            closeModalBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    createGroupModal.classList.remove('active');
+                });
+            });
+
+            // Close the modal by clicking on the overlay background
+            createGroupModal.addEventListener('click', (e) => {
+                if (e.target === createGroupModal) {
+                    createGroupModal.classList.remove('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

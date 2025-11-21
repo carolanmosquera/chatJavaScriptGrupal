@@ -3,7 +3,7 @@ package model;
 public enum MessageType {
     TEXT(0),        
     SYSTEM(1),      
-    VOICE_CALL(4);  
+    VOICECALL(4);  
 
     private final int value;
 

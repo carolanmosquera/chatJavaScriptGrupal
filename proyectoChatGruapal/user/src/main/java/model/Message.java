@@ -59,4 +59,6 @@ public class Message {
     public void setType(MessageType type) {
         this.type = type;
     }
+
+   
 }
