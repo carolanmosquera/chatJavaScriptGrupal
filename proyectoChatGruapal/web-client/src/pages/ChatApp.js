@@ -14,6 +14,8 @@ class ChatApp {
         this.currentUser = null;
         this.selectedContact = null;
         this.pollInterval = null;
+        this.selectedGroup = null;
+
 
         // Referencias DOM
         this.messagesContainer = document.getElementById('messages');
@@ -157,11 +159,15 @@ class ChatApp {
         this.pollInterval = setInterval(async () => {
             await this.updateMessages();
             await this.updateUsers();
+             //actualiza grupos
+            await this.updateGroups(); 
         }, 1000);
 
         // Primera actualización inmediata
         this.updateMessages();
         this.updateUsers();
+        this.updateGroups(); 
+
     }
 
     async updateMessages() {
@@ -190,6 +196,100 @@ class ChatApp {
         } catch (error) {
             console.error("Error obteniendo usuarios:", error);
         }
+    }
+    //metodo para actualizar grupos 
+    async updateGroups() {
+        try {
+            const groups = await this.chatService.getGroups();
+            this.renderGroups(groups);
+        } catch (error) {
+            console.error("Error obteniendo grupos:", error);
+        }
+    }
+
+     //metodo para renderizar lista de grupos
+     renderGroups(groups) {
+
+        const groupsContainer = document.getElementById('groupsList') || this.createGroupsSection();
+
+        groupsContainer.innerHTML = '';
+
+        if (groups.length === 0) {
+            groupsContainer.innerHTML = `
+                <div class="contact" style="justify-content: center; padding: 20px;">
+                    <span style="color: var(--text-muted);">No hay grupos creados</span>
+                </div>
+            `;
+            return;
+        }
+
+        groups.forEach(group => {
+            const groupElement = this.createGroupElement(group);
+            groupsContainer.appendChild(groupElement);
+        });
+    }
+     //metodo Crear elemento HTML para grupo
+     createGroupElement(group) {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'contact group';
+        groupDiv.onclick = () => this.selectGroup(group);
+
+        const memberCount = group.memberIds ? group.memberIds.length : 0;
+        const initials = group.name.split(' ').map(word => word[0]).join('').toUpperCase().substring(0, 2);
+
+        groupDiv.innerHTML = `
+            <div class="avatar group-avatar">${initials}</div>
+            <div class="contact-info">
+                <div class="contact-name">${this.escapeHtml(group.name)}</div>
+                <div class="contact-preview group-preview">
+                    <i class="fas fa-users"></i> ${memberCount} miembros
+                </div>
+            </div>
+        `;
+
+        return groupDiv;
+    }
+
+    //metodo Seleccionar grupo
+    selectGroup(group) {
+        this.selectedGroup = group;
+        this.selectedContact = null;
+
+        this.updateChatHeader(
+            group.name, 
+            `Grupo • ${group.memberIds ? group.memberIds.length : 0} miembros`
+        );
+
+        // Resaltar grupo seleccionado
+        document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.group').forEach(g => g.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+
+        // TODO: Cargar mensajes específicos del grupo (si los implementas)
+        console.log("Grupo seleccionado:", group.name);
+    }
+
+    // metodo Crear sección de grupos en el sidebar
+    createGroupsSection() {
+        const sidebar = document.querySelector('.sidebar');
+
+        // Crear contenedor de grupos
+        const groupsSection = document.createElement('div');
+        groupsSection.id = 'groupsSection';
+        groupsSection.className = 'groups-section';
+
+        groupsSection.innerHTML = `
+            <div class="section-header">
+                <h3>Grupos</h3>
+            </div>
+            <div id="groupsList" class="groups-list"></div>
+        `;
+
+        // Insertar después de la lista de contactos
+        const contactsList = document.getElementById('contacts');
+        sidebar.insertBefore(groupsSection, contactsList.nextSibling);
+
+        return document.getElementById('groupsList');
     }
 
     renderContacts(users) {
@@ -330,6 +430,7 @@ class ChatApp {
 
     selectContact(user) {
         this.selectedContact = user;
+        this.selectedGroup = null; // ← Deseleccionar grupo
         this.updateChatHeader(user.username, user.isOnline ? 'En línea' : 'Desconectado');
 
         // Marcar el contacto como activo
