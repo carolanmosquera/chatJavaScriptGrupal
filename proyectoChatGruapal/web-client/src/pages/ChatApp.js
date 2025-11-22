@@ -166,7 +166,17 @@ class ChatApp {
 
     async updateMessages() {
         try {
-            const messages = await this.chatService.getMessages();
+            let messages;
+            if (this.selectedContact) {
+                // Obtener mensajes privados del chat seleccionado
+                messages = await this.chatService.getPrivateMessages(
+                    this.currentUser.id,
+                    this.selectedContact.id
+                );
+            } else {
+                // Obtener mensajes del chat general
+                messages = await this.chatService.getMessages();
+            }
             this.renderMessages(messages);
         } catch (error) {
             console.error("Error obteniendo mensajes:", error);
@@ -288,13 +298,24 @@ class ChatApp {
         try {
             console.log(" Enviando mensaje:", content);
 
-            await this.chatService.sendMessage(
-                this.currentUser.id,
-                content,
-                Chat.MessageTypeEnum.TEXT
-            );
-
-            console.log(" Mensaje enviado exitosamente");
+            if (this.selectedContact) {
+                // Enviar mensaje privado
+                await this.chatService.sendPrivateMessage(
+                    this.currentUser.id,
+                    this.selectedContact.id,
+                    content,
+                    Chat.MessageTypeEnum.TEXT
+                );
+                console.log(" Mensaje privado enviado exitosamente");
+            } else {
+                // Enviar mensaje al chat general
+                await this.chatService.sendMessage(
+                    this.currentUser.id,
+                    content,
+                    Chat.MessageTypeEnum.TEXT
+                );
+                console.log(" Mensaje enviado exitosamente");
+            }
 
             this.messageInput.value = '';
             this.messageInput.focus();
@@ -311,18 +332,49 @@ class ChatApp {
         this.selectedContact = user;
         this.updateChatHeader(user.username, user.isOnline ? 'En línea' : 'Desconectado');
 
+        // Marcar el contacto como activo
         document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
-        event.currentTarget.classList.add('active');
+        const contacts = Array.from(document.querySelectorAll('.contact'));
+        const selectedContactElement = contacts.find(c => {
+            const nameElement = c.querySelector('.contact-name');
+            return nameElement && nameElement.textContent === user.username;
+        });
+        if (selectedContactElement) {
+            selectedContactElement.classList.add('active');
+        }
+
+        // Cargar mensajes privados inmediatamente
+        this.updateMessages();
     }
 
     updateChatHeader(title, subtitle) {
         const headerInfo = this.chatHeader.querySelector('.chat-header-info');
+        
+        // Si hay un contacto seleccionado, agregar botón para volver al chat general
+        const backButton = this.selectedContact ? `
+            <button class="icon-btn back-btn" title="Volver al chat general" onclick="window.chatApp.backToGeneralChat()">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+        ` : '';
+        
         headerInfo.innerHTML = `
+            ${backButton}
             <div class="chat-header-text">
                 <h2 class="chat-title">${title}</h2>
                 <span class="chat-subtitle">${subtitle}</span>
             </div>
         `;
+    }
+
+    backToGeneralChat() {
+        this.selectedContact = null;
+        this.updateChatHeader("Chat General", "Conectado como " + this.currentUser.username);
+        
+        // Desmarcar todos los contactos
+        document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
+        
+        // Cargar mensajes del chat general
+        this.updateMessages();
     }
 
     isScrolledToBottom() {

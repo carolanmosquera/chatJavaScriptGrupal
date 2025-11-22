@@ -207,6 +207,90 @@ public interface ChatServicePrx extends com.zeroc.Ice.ObjectPrx
         return f;
     }
 
+    default void sendPrivateMessage(String userId, String targetUserId, String content, MessageTypeEnum type)
+    {
+        sendPrivateMessage(userId, targetUserId, content, type, com.zeroc.Ice.ObjectPrx.noExplicitContext);
+    }
+
+    default void sendPrivateMessage(String userId, String targetUserId, String content, MessageTypeEnum type, java.util.Map<String, String> context)
+    {
+        _iceI_sendPrivateMessageAsync(userId, targetUserId, content, type, context, true).waitForResponse();
+    }
+
+    default java.util.concurrent.CompletableFuture<Void> sendPrivateMessageAsync(String userId, String targetUserId, String content, MessageTypeEnum type)
+    {
+        return _iceI_sendPrivateMessageAsync(userId, targetUserId, content, type, com.zeroc.Ice.ObjectPrx.noExplicitContext, false);
+    }
+
+    default java.util.concurrent.CompletableFuture<Void> sendPrivateMessageAsync(String userId, String targetUserId, String content, MessageTypeEnum type, java.util.Map<String, String> context)
+    {
+        return _iceI_sendPrivateMessageAsync(userId, targetUserId, content, type, context, false);
+    }
+
+    /**
+     * @hidden
+     * @param iceP_userId -
+     * @param iceP_targetUserId -
+     * @param iceP_content -
+     * @param iceP_type -
+     * @param context -
+     * @param sync -
+     * @return -
+     **/
+    default com.zeroc.IceInternal.OutgoingAsync<Void> _iceI_sendPrivateMessageAsync(String iceP_userId, String iceP_targetUserId, String iceP_content, MessageTypeEnum iceP_type, java.util.Map<String, String> context, boolean sync)
+    {
+        com.zeroc.IceInternal.OutgoingAsync<Void> f = new com.zeroc.IceInternal.OutgoingAsync<>(this, "sendPrivateMessage", null, sync, null);
+        f.invoke(false, context, null, ostr -> {
+                     ostr.writeString(iceP_userId);
+                     ostr.writeString(iceP_targetUserId);
+                     ostr.writeString(iceP_content);
+                     MessageTypeEnum.ice_write(ostr, iceP_type);
+                 }, null);
+        return f;
+    }
+
+    default MessageDTO[] getPrivateMessages(String userId, String targetUserId)
+    {
+        return getPrivateMessages(userId, targetUserId, com.zeroc.Ice.ObjectPrx.noExplicitContext);
+    }
+
+    default MessageDTO[] getPrivateMessages(String userId, String targetUserId, java.util.Map<String, String> context)
+    {
+        return _iceI_getPrivateMessagesAsync(userId, targetUserId, context, true).waitForResponse();
+    }
+
+    default java.util.concurrent.CompletableFuture<MessageDTO[]> getPrivateMessagesAsync(String userId, String targetUserId)
+    {
+        return _iceI_getPrivateMessagesAsync(userId, targetUserId, com.zeroc.Ice.ObjectPrx.noExplicitContext, false);
+    }
+
+    default java.util.concurrent.CompletableFuture<MessageDTO[]> getPrivateMessagesAsync(String userId, String targetUserId, java.util.Map<String, String> context)
+    {
+        return _iceI_getPrivateMessagesAsync(userId, targetUserId, context, false);
+    }
+
+    /**
+     * @hidden
+     * @param iceP_userId -
+     * @param iceP_targetUserId -
+     * @param context -
+     * @param sync -
+     * @return -
+     **/
+    default com.zeroc.IceInternal.OutgoingAsync<MessageDTO[]> _iceI_getPrivateMessagesAsync(String iceP_userId, String iceP_targetUserId, java.util.Map<String, String> context, boolean sync)
+    {
+        com.zeroc.IceInternal.OutgoingAsync<MessageDTO[]> f = new com.zeroc.IceInternal.OutgoingAsync<>(this, "getPrivateMessages", null, sync, null);
+        f.invoke(true, context, null, ostr -> {
+                     ostr.writeString(iceP_userId);
+                     ostr.writeString(iceP_targetUserId);
+                 }, istr -> {
+                     MessageDTO[] ret;
+                     ret = MessageListHelper.read(istr);
+                     return ret;
+                 });
+        return f;
+    }
+
     default GroupDTO createGroup(String groupName, String creatorId)
     {
         return createGroup(groupName, creatorId, com.zeroc.Ice.ObjectPrx.noExplicitContext);

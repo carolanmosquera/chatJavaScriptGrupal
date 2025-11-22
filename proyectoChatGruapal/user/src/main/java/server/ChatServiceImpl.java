@@ -17,6 +17,9 @@ public class ChatServiceImpl implements ChatService, Subject {
     private final Map<String, UserGroup> groups = new ConcurrentHashMap<>();
     private final List<ObserverPrx> observers = new CopyOnWriteArrayList<>();
     
+    // Almacenamiento de mensajes privados: clave = chatId (userId1_userId2 ordenado), valor = lista de mensajes
+    private final Map<String, List<Message>> privateMessages = new ConcurrentHashMap<>();
+    
     // Contadores para IDs
     private int userCounter = 0;
     private int messageCounter = 0;
@@ -135,6 +138,67 @@ public class ChatServiceImpl implements ChatService, Subject {
     @Override
     public MessageDTO[] getMessages(Current current) {
         return messages.stream()
+            .map(Message::toDTO)
+            .toArray(MessageDTO[]::new);
+    }
+
+    // ========== MÉTODOS DE MENSAJES PRIVADOS ==========
+
+    /**
+     * Genera un ID único para el chat privado entre dos usuarios.
+     * El ID es el mismo independientemente del orden de los usuarios.
+     */
+    private String getPrivateChatId(String userId1, String userId2) {
+        if (userId1.compareTo(userId2) < 0) {
+            return userId1 + "_" + userId2;
+        } else {
+            return userId2 + "_" + userId1;
+        }
+    }
+    @Override
+    // TODO: Regenerar código Ice desde Chat.ice para que este método tenga @Override
+    public synchronized void sendPrivateMessage(String userId, String targetUserId, String content, MessageTypeEnum type, Current current) {
+        User sender = users.get(userId);
+        User target = users.get(targetUserId);
+        
+        if (sender == null) {
+            System.err.println("Usuario remitente no encontrado: " + userId);
+            return;
+        }
+        
+        if (target == null) {
+            System.err.println("Usuario destino no encontrado: " + targetUserId);
+            return;
+        }
+
+        MessageType messageType = MessageType.fromIceEnum(type);
+
+        Message message = new Message(
+            "msg_" + (++messageCounter),
+            userId,
+            sender.getUsername(),
+            content,
+            messageType
+        );
+
+        // Obtener o crear la lista de mensajes para este chat privado
+        String chatId = getPrivateChatId(userId, targetUserId);
+        privateMessages.computeIfAbsent(chatId, k -> new CopyOnWriteArrayList<>()).add(message);
+
+        System.out.println("[" + sender.getUsername() + " -> " + target.getUsername() + "]: " + content);
+    }
+    
+    @Override
+    // TODO: Regenerar código Ice desde Chat.ice para que este método tenga @Override
+    public MessageDTO[] getPrivateMessages(String userId, String targetUserId, Current current) {
+        String chatId = getPrivateChatId(userId, targetUserId);
+        List<Message> chatMessages = privateMessages.get(chatId);
+        
+        if (chatMessages == null || chatMessages.isEmpty()) {
+            return new MessageDTO[0];
+        }
+        
+        return chatMessages.stream()
             .map(Message::toDTO)
             .toArray(MessageDTO[]::new);
     }

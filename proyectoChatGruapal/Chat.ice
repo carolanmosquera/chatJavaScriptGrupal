@@ -68,6 +68,10 @@ module Chat {
         void sendMessage(string userId, string content, MessageTypeEnum type);
         MessageList getMessages();
 
+        // Private Messages
+        void sendPrivateMessage(string userId, string targetUserId, string content, MessageTypeEnum type);
+        MessageList getPrivateMessages(string userId, string targetUserId);
+
         // Groups
         GroupDTO createGroup(string groupName, string creatorId);
         void joinGroup(string groupId, string userId);

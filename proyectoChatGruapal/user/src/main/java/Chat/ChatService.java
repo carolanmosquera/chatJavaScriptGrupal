@@ -27,6 +27,10 @@ public interface ChatService extends com.zeroc.Ice.Object
 
     MessageDTO[] getMessages(com.zeroc.Ice.Current current);
 
+    void sendPrivateMessage(String userId, String targetUserId, String content, MessageTypeEnum type, com.zeroc.Ice.Current current);
+
+    MessageDTO[] getPrivateMessages(String userId, String targetUserId, com.zeroc.Ice.Current current);
+
     GroupDTO createGroup(String groupName, String creatorId, com.zeroc.Ice.Current current);
 
     void joinGroup(String groupId, String userId, com.zeroc.Ice.Current current);
@@ -165,6 +169,53 @@ public interface ChatService extends com.zeroc.Ice.Object
      * @param current -
      * @return -
     **/
+    static java.util.concurrent.CompletionStage<com.zeroc.Ice.OutputStream> _iceD_sendPrivateMessage(ChatService obj, final com.zeroc.IceInternal.Incoming inS, com.zeroc.Ice.Current current)
+    {
+        com.zeroc.Ice.Object._iceCheckMode(null, current.mode);
+        com.zeroc.Ice.InputStream istr = inS.startReadParams();
+        String iceP_userId;
+        String iceP_targetUserId;
+        String iceP_content;
+        MessageTypeEnum iceP_type;
+        iceP_userId = istr.readString();
+        iceP_targetUserId = istr.readString();
+        iceP_content = istr.readString();
+        iceP_type = MessageTypeEnum.ice_read(istr);
+        inS.endReadParams();
+        obj.sendPrivateMessage(iceP_userId, iceP_targetUserId, iceP_content, iceP_type, current);
+        return inS.setResult(inS.writeEmptyParams());
+    }
+
+    /**
+     * @hidden
+     * @param obj -
+     * @param inS -
+     * @param current -
+     * @return -
+    **/
+    static java.util.concurrent.CompletionStage<com.zeroc.Ice.OutputStream> _iceD_getPrivateMessages(ChatService obj, final com.zeroc.IceInternal.Incoming inS, com.zeroc.Ice.Current current)
+    {
+        com.zeroc.Ice.Object._iceCheckMode(null, current.mode);
+        com.zeroc.Ice.InputStream istr = inS.startReadParams();
+        String iceP_userId;
+        String iceP_targetUserId;
+        iceP_userId = istr.readString();
+        iceP_targetUserId = istr.readString();
+        inS.endReadParams();
+        MessageDTO[] ret = obj.getPrivateMessages(iceP_userId, iceP_targetUserId, current);
+        com.zeroc.Ice.OutputStream ostr = inS.startWriteParams();
+        MessageListHelper.write(ostr, ret);
+        inS.endWriteParams(ostr);
+        return inS.setResult(ostr);
+    }
+
+    /**
+     * @hidden
+     * @param obj -
+     * @param inS -
+     * @param current -
+     * @return -
+    **/
     static java.util.concurrent.CompletionStage<com.zeroc.Ice.OutputStream> _iceD_createGroup(ChatService obj, final com.zeroc.IceInternal.Incoming inS, com.zeroc.Ice.Current current)
     {
         com.zeroc.Ice.Object._iceCheckMode(null, current.mode);
@@ -264,6 +315,7 @@ public interface ChatService extends com.zeroc.Ice.Object
         "endVoiceCall",
         "getGroups",
         "getMessages",
+        "getPrivateMessages",
         "getUsers",
         "ice_id",
         "ice_ids",
@@ -273,6 +325,7 @@ public interface ChatService extends com.zeroc.Ice.Object
         "joinGroup",
         "leaveChat",
         "sendMessage",
+        "sendPrivateMessage",
         "startVoiceCall"
     };
 
@@ -307,41 +360,49 @@ public interface ChatService extends com.zeroc.Ice.Object
             }
             case 4:
             {
-                return _iceD_getUsers(this, in, current);
+                return _iceD_getPrivateMessages(this, in, current);
             }
             case 5:
             {
-                return com.zeroc.Ice.Object._iceD_ice_id(this, in, current);
+                return _iceD_getUsers(this, in, current);
             }
             case 6:
             {
-                return com.zeroc.Ice.Object._iceD_ice_ids(this, in, current);
+                return com.zeroc.Ice.Object._iceD_ice_id(this, in, current);
             }
             case 7:
             {
-                return com.zeroc.Ice.Object._iceD_ice_isA(this, in, current);
+                return com.zeroc.Ice.Object._iceD_ice_ids(this, in, current);
             }
             case 8:
             {
-                return com.zeroc.Ice.Object._iceD_ice_ping(this, in, current);
+                return com.zeroc.Ice.Object._iceD_ice_isA(this, in, current);
             }
             case 9:
             {
-                return _iceD_joinChat(this, in, current);
+                return com.zeroc.Ice.Object._iceD_ice_ping(this, in, current);
             }
             case 10:
             {
-                return _iceD_joinGroup(this, in, current);
+                return _iceD_joinChat(this, in, current);
             }
             case 11:
             {
-                return _iceD_leaveChat(this, in, current);
+                return _iceD_joinGroup(this, in, current);
             }
             case 12:
             {
-                return _iceD_sendMessage(this, in, current);
+                return _iceD_leaveChat(this, in, current);
             }
             case 13:
+            {
+                return _iceD_sendMessage(this, in, current);
+            }
+            case 14:
+            {
+                return _iceD_sendPrivateMessage(this, in, current);
+            }
+            case 15:
             {
                 return _iceD_startVoiceCall(this, in, current);
             }

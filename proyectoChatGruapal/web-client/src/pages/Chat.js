@@ -198,6 +198,8 @@
         "getUsers": [, , , , ["Chat.UserListHelper"], , , , , ],
         "sendMessage": [, , , , , [[7], [7], [Chat.MessageTypeEnum._helper]], , , , ],
         "getMessages": [, , , , ["Chat.MessageListHelper"], , , , , ],
+        "sendPrivateMessage": [, , , , , [[7], [7], [7], [Chat.MessageTypeEnum._helper]], , , , ],
+        "getPrivateMessages": [, , , , ["Chat.MessageListHelper"], [[7], [7]], , , , ],
         "createGroup": [, , , , [Chat.GroupDTO], [[7], [7]], , , , ],
         "joinGroup": [, , , , , [[7], [7]], , , , ],
         "getGroups": [, , , , ["Chat.GroupListHelper"], , , , , ],
