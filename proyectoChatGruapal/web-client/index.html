@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatApp - Ice WebSocket</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+
     <!-- Ice.js desde CDN - VERSIÓN CORREGIDA -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ice/3.7.100/Ice.js"></script>
+    <script src="./node_modules/ice/lib/Ice.min.js"></script>
+    <script src="./src/pages/Chat.js"></script> <!-- generado por slice2js -->
+    <script src="./src/pages/ChatApp.js"></script>
 </head>
+
 <body>
     <div class="app">
         <!-- SIDEBAR FOR CONTACTS AND GROUPS -->
@@ -23,7 +27,7 @@
                     <i class="fas fa-users"></i>
                 </button>
             </header>
-            
+
             <div class="search-box">
                 <div class="search-wrapper">
                     <i class="fas fa-search"></i>
@@ -37,7 +41,7 @@
                 </div>
             </div>
         </aside>
-        
+
         <!-- MAIN CHAT AREA -->
         <main class="main">
             <header id="chatHeader" class="chat-header">
@@ -51,19 +55,20 @@
                     <button class="icon-btn" title="Voice Call"><i class="fas fa-phone"></i></button>
                 </div>
             </header>
-            
+
             <div id="messages" class="messages">
                 <div class="messages-placeholder">
                     <i class="fas fa-comment-dots"></i>
                     <p>Messages you send and receive will be shown here.</p>
                 </div>
             </div>
-            
+
             <!-- MESSAGE COMPOSER AREA -->
             <div class="composer">
                 <div class="input-container" id="normalInput">
                     <input id="messageInput" type="text" class="message-input" placeholder="Type a message..." />
-                    <button class="icon-btn mic-btn" title="Record voice note"><i class="fas fa-microphone"></i></button>
+                    <button class="icon-btn mic-btn" title="Record voice note"><i
+                            class="fas fa-microphone"></i></button>
                     <button id="sendBtn" class="send-btn" title="Send"><i class="fas fa-paper-plane"></i></button>
                 </div>
 
@@ -72,7 +77,13 @@
                     <div class="recording-indicator"></div>
                     <span class="recording-time">00:00</span>
                     <div class="recording-waveform">
-                        <div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div><div class="recording-bar"></div>
+                        <div class="recording-bar"></div>
+                        <div class="recording-bar"></div>
+                        <div class="recording-bar"></div>
+                        <div class="recording-bar"></div>
+                        <div class="recording-bar"></div>
+                        <div class="recording-bar"></div>
+                        <div class="recording-bar"></div>
                     </div>
                     <button class="send-btn" title="Send voice note"><i class="fas fa-paper-plane"></i></button>
                 </div>
@@ -80,7 +91,7 @@
         </main>
     </div>
 
-      <!-- MODAL FOR USERNAME INPUT -->
+    <!-- MODAL FOR USERNAME INPUT -->
     <div class="modal-overlay active" id="usernameModal">
         <div class="modal">
             <div class="modal-header">
@@ -91,14 +102,8 @@
             </div>
             <div class="form-group">
                 <label>Ingresa tu nombre de usuario</label>
-                <input 
-                    type="text" 
-                    id="usernameInput" 
-                    class="form-input" 
-                    placeholder="Ej: Juan Pérez"
-                    autofocus
-                    maxlength="30"
-                >
+                <input type="text" id="usernameInput" class="form-input" placeholder="Ej: Juan Pérez" autofocus
+                    maxlength="30">
                 <small style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px; display: block;">
                     Este nombre será visible para otros usuarios
                 </small>
@@ -133,8 +138,8 @@
     </div>
 
     <!-- Incluir el archivo JavaScript del chat -->
-    <script src="src/pages/ChatApp.js"></script>
-    
+    <script type="module" src="src/pages/ChatApp.js"></script>
+
     <script>
         // Verificar que Ice se cargó correctamente
         if (typeof Ice === 'undefined') {
@@ -160,7 +165,7 @@
                 recordingInput.style.display = 'none';
                 normalInput.style.display = 'flex';
             });
-            
+
             // Create group modal logic
             const createGroupBtn = document.getElementById('createGroupBtn');
             const createGroupModal = document.getElementById('createGroupModal');
@@ -171,7 +176,7 @@
                     alert("Debes estar conectado para crear un grupo");
                     return;
                 }
-                
+
                 try {
                     const users = await window.chatApp.chatService.getUsers();
                     renderUserSelectList(users);
@@ -198,30 +203,30 @@
             document.getElementById('createGroupSubmit').addEventListener('click', async () => {
                 const groupNameInput = document.getElementById('groupNameInput');
                 const groupName = groupNameInput.value.trim();
-                
+
                 if (!groupName) {
                     alert("Debes ingresar un nombre para el grupo");
                     return;
                 }
-                
+
                 if (!window.chatApp || !window.chatApp.currentUser) {
                     alert("No estás conectado");
                     return;
                 }
-                
+
                 try {
                     const group = await window.chatApp.chatService.createGroup(
-                        groupName, 
+                        groupName,
                         window.chatApp.currentUser.id
                     );
-                    
+
                     console.log("Grupo creado:", group);
-                    
+
                     const selectedUsers = document.querySelectorAll('#userSelectList input[type="checkbox"]:checked');
                     for (const checkbox of selectedUsers) {
                         await window.chatApp.chatService.joinGroup(group.id, checkbox.value);
                     }
-                    
+
                     alert("Grupo creado exitosamente: " + groupName);
                     createGroupModal.classList.remove('active');
                     groupNameInput.value = '';
@@ -235,34 +240,35 @@
         function renderUserSelectList(users) {
             const userSelectList = document.getElementById('userSelectList');
             userSelectList.innerHTML = '';
-            
+
             if (!window.chatApp || !window.chatApp.currentUser) {
                 userSelectList.innerHTML = '<p class="placeholder-text">No hay usuarios disponibles</p>';
                 return;
             }
-            
+
             const otherUsers = users.filter(user => user.id !== window.chatApp.currentUser.id);
-            
+
             if (otherUsers.length === 0) {
                 userSelectList.innerHTML = '<p class="placeholder-text">No hay otros usuarios conectados</p>';
                 return;
             }
-            
+
             otherUsers.forEach(user => {
                 const userItem = document.createElement('div');
                 userItem.className = 'user-select-item';
-                
+
                 const initial = user.username.charAt(0).toUpperCase();
-                
+
                 userItem.innerHTML = `
                     <input type="checkbox" value="${user.id}" id="user_${user.id}">
                     <div class="avatar-small">${initial}</div>
                     <label for="user_${user.id}">${user.username}</label>
                 `;
-                
+
                 userSelectList.appendChild(userItem);
             });
         }
     </script>
 </body>
+
 </html>

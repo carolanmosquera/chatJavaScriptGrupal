@@ -1,4 +1,4 @@
-const Chat = {
+const ChatUI = {
     MessageTypeEnum: {
         TEXT: { value: 0 },
         SYSTEM: { value: 1 },
@@ -14,14 +14,14 @@ class ChatApp {
         this.currentUser = null;
         this.selectedContact = null;
         this.pollInterval = null;
-        
+
         // Referencias DOM
         this.messagesContainer = document.getElementById('messages');
         this.contactsList = document.getElementById('contacts');
         this.messageInput = document.getElementById('messageInput');
         this.sendBtn = document.getElementById('sendBtn');
         this.chatHeader = document.getElementById('chatHeader');
-        
+
         this.initializeEventListeners();
     }
 
@@ -35,31 +35,33 @@ class ChatApp {
     async connect() {
         try {
             console.log(" Iniciando conexión con Ice...");
-            
+
             // Inicializar Ice communicator
             const initData = new Ice.InitializationData();
             initData.properties = Ice.createProperties();
-            
+
             this.communicator = Ice.initialize(initData);
-            
+
             console.log(" Communicator inicializado");
-            
+
             // Crear proxy al servidor usando WebSocket
             const proxyString = "ChatService:ws -h localhost -p 10001 -r /";
             console.log(" Conectando a:", proxyString);
-            
+
             const base = this.communicator.stringToProxy(proxyString);
-            this.chatService = base;
-            
+
+            // Casteo obligatorio al tipo generado por Slice
+            this.chatService = Chat.ChatServicePrx.uncheckedCast(base);
+
             console.log(" Conectado al servidor Ice");
-            
+
             // Configurar el modal de username
             this.setupUsernameModal();
-            
+
         } catch (error) {
             console.error(" Error conectando:", error);
             alert("No se pudo conectar al servidor: " + error.message);
-            
+
             // Retry después de 3 segundos
             setTimeout(() => this.connect(), 3000);
         }
@@ -69,14 +71,14 @@ class ChatApp {
         const modal = document.getElementById('usernameModal');
         const input = document.getElementById('usernameInput');
         const joinBtn = document.getElementById('joinChatBtn');
-        
+
         // Mostrar el modal
         modal.classList.add('active');
         input.focus();
-        
+
         const handleJoin = async () => {
             const username = input.value.trim();
-            
+
             if (!username || username.length < 2) {
                 input.style.borderColor = 'var(--danger)';
                 input.placeholder = 'Por favor ingresa un nombre válido (mínimo 2 caracteres)';
@@ -84,84 +86,62 @@ class ChatApp {
                 input.focus();
                 return;
             }
-            
+
             // Deshabilitar botón mientras se conecta
             joinBtn.disabled = true;
             joinBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Conectando...';
-            
+
             try {
                 console.log(" Intentando unirse con usuario:", username);
-                
-                // Llamar a joinChat usando Ice
-                const request = new Ice.OutputStream(this.communicator);
-                request.startEncapsulation();
-                request.writeString(username);
-                request.endEncapsulation();
-                
+
                 console.log(" Enviando petición joinChat al servidor...");
-                
-                const response = await this.chatService.ice_invoke(
-                    "joinChat", 
-                    Ice.OperationMode.Normal, 
-                    request.finished()
-                );
-                
+
+                const response = await this.chatService.joinChat(username);
+
                 console.log(" Respuesta recibida:", response);
-                
-                if (response.ok) {
-                    const reply = new Ice.InputStream(this.communicator, response.outParams);
-                    reply.startEncapsulation();
-                    
-                    // Leer UserDTO
-                    this.currentUser = {
-                        id: reply.readString(),
-                        username: reply.readString(),
-                        isOnline: reply.readBool(),
-                        connectedAt: reply.readLong()
-                    };
-                    
-                    reply.endEncapsulation();
-                    
-                    console.log(" Usuario registrado exitosamente:", this.currentUser);
-                    this.updateChatHeader("Chat General", "Conectado como " + this.currentUser.username);
-                    
-                    // Ocultar modal
-                    modal.classList.remove('active');
-                    
-                    // Iniciar polling
-                    this.startPolling();
-                    
-                    // Mensaje de bienvenida
-                    this.showNotification("¡Bienvenido " + this.currentUser.username + "!", "success");
-                    
-                } else {
+
+                // Validación correcta: UserDTO directo
+                if (!response || typeof response.id !== "string") {
                     throw new Error("Respuesta no válida del servidor");
                 }
+
+                // Asignar el usuario recibido
+                this.currentUser = response;
+
+                console.log(" Usuario registrado exitosamente:", this.currentUser);
+
+                this.updateChatHeader("Chat General", "Conectado como " + this.currentUser.username);
+
+                modal.classList.remove('active');
+
+                this.startPolling();
+
+                this.showNotification("¡Bienvenido " + this.currentUser.username + "!", "success");
+
             } catch (error) {
                 console.error(" Error al unirse al chat:", error);
-                
-                // Restaurar botón
+
                 joinBtn.disabled = false;
                 joinBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Unirse al Chat';
                 input.style.borderColor = 'var(--danger)';
                 input.value = '';
                 input.placeholder = 'Error al conectar. Intenta nuevamente';
                 input.focus();
-                
+
                 alert("Error al conectar con el servidor:\n" + error.message + "\n\n¿Está el servidor corriendo?");
             }
         };
-        
+
         // Manejar click en botón
         joinBtn.onclick = handleJoin;
-        
+
         // Manejar Enter en input
         input.onkeypress = (e) => {
             if (e.key === 'Enter') {
                 handleJoin();
             }
         };
-        
+
         // Evitar cerrar el modal clickeando fuera
         modal.onclick = (e) => {
             if (e.target === modal) {
@@ -172,13 +152,13 @@ class ChatApp {
 
     startPolling() {
         console.log(" Iniciando polling de mensajes y usuarios...");
-        
+
         // Actualizar cada segundo
         this.pollInterval = setInterval(async () => {
             await this.updateMessages();
             await this.updateUsers();
         }, 1000);
-        
+
         // Primera actualización inmediata
         this.updateMessages();
         this.updateUsers();
@@ -189,16 +169,16 @@ class ChatApp {
             const request = new Ice.OutputStream(this.communicator);
             request.startEncapsulation();
             request.endEncapsulation();
-            
+
             const response = await this.chatService.ice_invoke("getMessages", Ice.OperationMode.Normal, request.finished());
-            
+
             if (response.ok) {
                 const reply = new Ice.InputStream(this.communicator, response.outParams);
                 reply.startEncapsulation();
-                
+
                 const messages = this.readMessageArray(reply);
                 reply.endEncapsulation();
-                
+
                 this.renderMessages(messages);
             }
         } catch (error) {
@@ -211,16 +191,16 @@ class ChatApp {
             const request = new Ice.OutputStream(this.communicator);
             request.startEncapsulation();
             request.endEncapsulation();
-            
+
             const response = await this.chatService.ice_invoke("getUsers", Ice.OperationMode.Normal, request.finished());
-            
+
             if (response.ok) {
                 const reply = new Ice.InputStream(this.communicator, response.outParams);
                 reply.startEncapsulation();
-                
+
                 const users = this.readUserArray(reply);
                 reply.endEncapsulation();
-                
+
                 this.renderContacts(users);
             }
         } catch (error) {
@@ -231,7 +211,7 @@ class ChatApp {
     readMessageArray(stream) {
         const size = stream.readSize();
         const messages = [];
-        
+
         for (let i = 0; i < size; i++) {
             messages.push({
                 id: stream.readString(),
@@ -242,14 +222,14 @@ class ChatApp {
                 type: { value: stream.readEnum(3) }
             });
         }
-        
+
         return messages;
     }
 
     readUserArray(stream) {
         const size = stream.readSize();
         const users = [];
-        
+
         for (let i = 0; i < size; i++) {
             users.push({
                 id: stream.readString(),
@@ -258,17 +238,17 @@ class ChatApp {
                 connectedAt: stream.readLong()
             });
         }
-        
+
         return users;
     }
 
     renderContacts(users) {
         this.contactsList.innerHTML = '';
-        
-        const onlineUsers = users.filter(user => 
+
+        const onlineUsers = users.filter(user =>
             user.id !== this.currentUser.id && user.isOnline
         );
-        
+
         if (onlineUsers.length === 0) {
             this.contactsList.innerHTML = `
                 <div class="contact" style="justify-content: center; padding: 20px;">
@@ -277,15 +257,15 @@ class ChatApp {
             `;
             return;
         }
-        
+
         onlineUsers.forEach(user => {
             const contactDiv = document.createElement('div');
             contactDiv.className = 'contact';
             contactDiv.onclick = () => this.selectContact(user);
-            
+
             const initial = user.username.charAt(0).toUpperCase();
             const statusClass = user.isOnline ? 'online' : 'offline';
-            
+
             contactDiv.innerHTML = `
                 <div class="avatar">${initial}</div>
                 <div class="contact-info">
@@ -295,7 +275,7 @@ class ChatApp {
                     </div>
                 </div>
             `;
-            
+
             this.contactsList.appendChild(contactDiv);
         });
     }
@@ -305,11 +285,11 @@ class ChatApp {
         if (placeholder && messages.length > 0) {
             placeholder.remove();
         }
-        
+
         const shouldScrollDown = this.isScrolledToBottom();
-        
+
         this.messagesContainer.innerHTML = '';
-        
+
         if (messages.length === 0) {
             this.messagesContainer.innerHTML = `
                 <div class="messages-placeholder">
@@ -319,12 +299,12 @@ class ChatApp {
             `;
             return;
         }
-        
+
         messages.forEach(msg => {
             const messageDiv = this.createMessageElement(msg);
             this.messagesContainer.appendChild(messageDiv);
         });
-        
+
         if (shouldScrollDown) {
             this.scrollToBottom();
         }
@@ -333,8 +313,8 @@ class ChatApp {
     createMessageElement(msg) {
         const isMyMessage = msg.senderId === this.currentUser.id;
         const messageDiv = document.createElement('div');
-        
-        if (msg.type.value === Chat.MessageTypeEnum.SYSTEM.value) {
+
+        if (msg.type.value === ChatUI.MessageTypeEnum.SYSTEM.value) {
             messageDiv.className = 'system-message';
             messageDiv.innerHTML = `
                 <div class="system-message-content">
@@ -342,7 +322,7 @@ class ChatApp {
                     ${this.escapeHtml(msg.content)}
                 </div>
             `;
-        } else if (msg.type.value === Chat.MessageTypeEnum.VOICECALL.value) {
+        } else if (msg.type.value === ChatUI.MessageTypeEnum.VOICECALL.value) {
             messageDiv.className = isMyMessage ? 'message my-message' : 'message other-message';
             messageDiv.innerHTML = `
                 <div class="message-content">
@@ -357,31 +337,31 @@ class ChatApp {
                 ${!isMyMessage ? `<div class="message-sender">${this.escapeHtml(msg.senderName)}</div>` : ''}
             `;
         }
-        
+
         return messageDiv;
     }
 
     async sendMessage() {
         const content = this.messageInput.value.trim();
         if (!content || !this.currentUser) return;
-        
+
         try {
             console.log(" Enviando mensaje:", content);
-            
+
             const request = new Ice.OutputStream(this.communicator);
             request.startEncapsulation();
             request.writeString(this.currentUser.id);
             request.writeString(content);
-            request.writeEnum(Chat.MessageTypeEnum.TEXT.value, 3);
+            request.writeEnum(ChatUI.MessageTypeEnum.TEXT.value, 3);
             request.endEncapsulation();
-            
+
             await this.chatService.ice_invoke("sendMessage", Ice.OperationMode.Normal, request.finished());
-            
+
             console.log(" Mensaje enviado exitosamente");
-            
+
             this.messageInput.value = '';
             this.messageInput.focus();
-            
+
             // Actualizar inmediatamente
             await this.updateMessages();
         } catch (error) {
@@ -393,7 +373,7 @@ class ChatApp {
     selectContact(user) {
         this.selectedContact = user;
         this.updateChatHeader(user.username, user.isOnline ? 'En línea' : 'Desconectado');
-        
+
         document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
         event.currentTarget.classList.add('active');
     }
@@ -410,8 +390,8 @@ class ChatApp {
 
     isScrolledToBottom() {
         const threshold = 50;
-        return this.messagesContainer.scrollHeight - this.messagesContainer.scrollTop 
-               <= this.messagesContainer.clientHeight + threshold;
+        return this.messagesContainer.scrollHeight - this.messagesContainer.scrollTop
+            <= this.messagesContainer.clientHeight + threshold;
     }
 
     scrollToBottom() {
@@ -432,21 +412,21 @@ class ChatApp {
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
         }
-        
+
         if (this.currentUser && this.chatService) {
             try {
                 const request = new Ice.OutputStream(this.communicator);
                 request.startEncapsulation();
                 request.writeString(this.currentUser.id);
                 request.endEncapsulation();
-                
+
                 await this.chatService.ice_invoke("leaveChat", Ice.OperationMode.Normal, request.finished());
                 console.log(" Desconectado correctamente");
             } catch (error) {
                 console.error("Error al desconectar:", error);
             }
         }
-        
+
         if (this.communicator) {
             await this.communicator.destroy();
         }
@@ -483,7 +463,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log(" Iniciando ChatApp...");
     app = new ChatApp();
     window.chatApp = app;
-    
+
     // Conectar al servidor
     setTimeout(async () => {
         await app.connect();
