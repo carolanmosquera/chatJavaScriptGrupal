@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Ice.js desde CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/ice/3.7.10/Ice.min.js"></script>
+    <!-- Ice.js desde CDN - VERSIÓN CORREGIDA -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ice/3.7.100/Ice.js"></script>
 </head>
 <body>
     <div class="app">
@@ -136,6 +136,14 @@
     <script src="src/pages/ChatApp.js"></script>
     
     <script>
+        // Verificar que Ice se cargó correctamente
+        if (typeof Ice === 'undefined') {
+            console.error('❌ Ice no se cargó correctamente');
+            alert('Error: No se pudo cargar la librería Ice. Verifica tu conexión a internet.');
+        } else {
+            console.log('✓ Ice cargado correctamente - Versión:', Ice.stringVersion());
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             // Voice recording UI logic
             const micBtn = document.querySelector('.mic-btn');
@@ -186,8 +194,6 @@
                 }
             });
 
-
-
             // Submit group creation
             document.getElementById('createGroupSubmit').addEventListener('click', async () => {
                 const groupNameInput = document.getElementById('groupNameInput');
@@ -225,8 +231,6 @@
                 }
             });
         });
-
-
 
         function renderUserSelectList(users) {
             const userSelectList = document.getElementById('userSelectList');

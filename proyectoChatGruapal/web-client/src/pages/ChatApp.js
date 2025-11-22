@@ -45,7 +45,7 @@ class ChatApp {
             console.log(" Communicator inicializado");
             
             // Crear proxy al servidor usando WebSocket
-            const proxyString = "ChatService:ws -h localhost -p 10001";
+            const proxyString = "ChatService:ws -h localhost -p 10001 -r /";
             console.log(" Conectando a:", proxyString);
             
             const base = this.communicator.stringToProxy(proxyString);
