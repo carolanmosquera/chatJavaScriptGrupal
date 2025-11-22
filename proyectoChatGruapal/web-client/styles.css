@@ -330,3 +330,90 @@ body {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
+
+/* NUEVOS ESTILOS PARA GRUPOS */
+.groups-section {
+    margin-top: 20px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+}
+
+.section-header {
+    padding: 0 15px 10px;
+}
+
+.section-header h3 {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.groups-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.contact.group {
+    border-left: 3px solid var(--primary);
+}
+
+.group-avatar {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: white;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.group-preview {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.group-preview i {
+    margin-right: 5px;
+    color: var(--primary);
+}
+
+.contact.group.active {
+    background-color: rgba(var(--primary-rgb), 0.1);
+}
+
+.user-select-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.user-select-item:hover {
+    background-color: var(--bg-hover);
+}
+
+.user-select-item input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.user-select-item label {
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    flex: 1;
+}
+
+.username {
+    font-weight: 500;
+}
+
+.user-status {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.user-status.online {
+    color: var(--success);
+}

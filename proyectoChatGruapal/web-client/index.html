@@ -143,7 +143,7 @@
     <script>
         // Verificar que Ice se cargó correctamente
         if (typeof Ice === 'undefined') {
-            console.error('❌ Ice no se cargó correctamente');
+            console.error(' Ice no se cargó correctamente');
             alert('Error: No se pudo cargar la librería Ice. Verifica tu conexión a internet.');
         } else {
             console.log('✓ Ice cargado correctamente - Versión:', Ice.stringVersion());
@@ -230,6 +230,12 @@
                     alert("Grupo creado exitosamente: " + groupName);
                     createGroupModal.classList.remove('active');
                     groupNameInput.value = '';
+
+                    // NUEVO: Forzar actualización inmediata de grupos
+                    if (window.chatApp && window.chatApp.updateGroups) {
+                        await window.chatApp.updateGroups();
+                        console.log(" Lista de grupos actualizada");
+                    }
                 } catch (error) {
                     console.error("Error creando grupo:", error);
                     alert("Error al crear el grupo");
@@ -237,6 +243,7 @@
             });
         });
 
+        // En el script del HTML, actualiza la función renderUserSelectList:
         function renderUserSelectList(users) {
             const userSelectList = document.getElementById('userSelectList');
             userSelectList.innerHTML = '';
@@ -256,15 +263,20 @@
             otherUsers.forEach(user => {
                 const userItem = document.createElement('div');
                 userItem.className = 'user-select-item';
-
+                
                 const initial = user.username.charAt(0).toUpperCase();
-
+                
                 userItem.innerHTML = `
                     <input type="checkbox" value="${user.id}" id="user_${user.id}">
                     <div class="avatar-small">${initial}</div>
-                    <label for="user_${user.id}">${user.username}</label>
+                    <label for="user_${user.id}">
+                        <span class="username">${user.username}</span>
+                        <span class="user-status ${user.isOnline ? 'online' : 'offline'}">
+                            ${user.isOnline ? 'En línea' : 'Desconectado'}
+                        </span>
+                    </label>
                 `;
-
+                
                 userSelectList.appendChild(userItem);
             });
         }
