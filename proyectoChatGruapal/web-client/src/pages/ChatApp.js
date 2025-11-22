@@ -166,21 +166,8 @@ class ChatApp {
 
     async updateMessages() {
         try {
-            const request = new Ice.OutputStream(this.communicator);
-            request.startEncapsulation();
-            request.endEncapsulation();
-
-            const response = await this.chatService.ice_invoke("getMessages", Ice.OperationMode.Normal, request.finished());
-
-            if (response.ok) {
-                const reply = new Ice.InputStream(this.communicator, response.outParams);
-                reply.startEncapsulation();
-
-                const messages = this.readMessageArray(reply);
-                reply.endEncapsulation();
-
-                this.renderMessages(messages);
-            }
+            const messages = await this.chatService.getMessages();
+            this.renderMessages(messages);
         } catch (error) {
             console.error("Error obteniendo mensajes:", error);
         }
@@ -188,58 +175,11 @@ class ChatApp {
 
     async updateUsers() {
         try {
-            const request = new Ice.OutputStream(this.communicator);
-            request.startEncapsulation();
-            request.endEncapsulation();
-
-            const response = await this.chatService.ice_invoke("getUsers", Ice.OperationMode.Normal, request.finished());
-
-            if (response.ok) {
-                const reply = new Ice.InputStream(this.communicator, response.outParams);
-                reply.startEncapsulation();
-
-                const users = this.readUserArray(reply);
-                reply.endEncapsulation();
-
-                this.renderContacts(users);
-            }
+            const users = await this.chatService.getUsers();
+            this.renderContacts(users);
         } catch (error) {
             console.error("Error obteniendo usuarios:", error);
         }
-    }
-
-    readMessageArray(stream) {
-        const size = stream.readSize();
-        const messages = [];
-
-        for (let i = 0; i < size; i++) {
-            messages.push({
-                id: stream.readString(),
-                senderId: stream.readString(),
-                senderName: stream.readString(),
-                content: stream.readString(),
-                timestamp: stream.readLong(),
-                type: { value: stream.readEnum(3) }
-            });
-        }
-
-        return messages;
-    }
-
-    readUserArray(stream) {
-        const size = stream.readSize();
-        const users = [];
-
-        for (let i = 0; i < size; i++) {
-            users.push({
-                id: stream.readString(),
-                username: stream.readString(),
-                isOnline: stream.readBool(),
-                connectedAt: stream.readLong()
-            });
-        }
-
-        return users;
     }
 
     renderContacts(users) {
@@ -348,14 +288,11 @@ class ChatApp {
         try {
             console.log(" Enviando mensaje:", content);
 
-            const request = new Ice.OutputStream(this.communicator);
-            request.startEncapsulation();
-            request.writeString(this.currentUser.id);
-            request.writeString(content);
-            request.writeEnum(ChatUI.MessageTypeEnum.TEXT.value, 3);
-            request.endEncapsulation();
-
-            await this.chatService.ice_invoke("sendMessage", Ice.OperationMode.Normal, request.finished());
+            await this.chatService.sendMessage(
+                this.currentUser.id,
+                content,
+                Chat.MessageTypeEnum.TEXT
+            );
 
             console.log(" Mensaje enviado exitosamente");
 
@@ -415,12 +352,7 @@ class ChatApp {
 
         if (this.currentUser && this.chatService) {
             try {
-                const request = new Ice.OutputStream(this.communicator);
-                request.startEncapsulation();
-                request.writeString(this.currentUser.id);
-                request.endEncapsulation();
-
-                await this.chatService.ice_invoke("leaveChat", Ice.OperationMode.Normal, request.finished());
+                await this.chatService.leaveChat(this.currentUser.id);
                 console.log(" Desconectado correctamente");
             } catch (error) {
                 console.error("Error al desconectar:", error);
