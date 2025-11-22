@@ -1,5 +1,11 @@
-// app.js - Cliente Web para Chat con Ice.js
-// Nota: Necesitarás incluir ice.js en tu HTML
+const Chat = {
+    MessageTypeEnum: {
+        TEXT: { value: 0 },
+        SYSTEM: { value: 1 },
+        AUDIO: { value: 2 },
+        VOICECALL: { value: 3 }
+    }
+};
 
 class ChatApp {
     constructor() {
@@ -7,6 +13,7 @@ class ChatApp {
         this.chatService = null;
         this.currentUser = null;
         this.selectedContact = null;
+        this.pollInterval = null;
         
         // Referencias DOM
         this.messagesContainer = document.getElementById('messages');
@@ -27,63 +34,173 @@ class ChatApp {
 
     async connect() {
         try {
-            // Inicializar Ice
-            this.communicator = Ice.initialize();
+            console.log(" Iniciando conexión con Ice...");
             
-            // Conectar al servidor usando WebSocket
-            const proxy = this.communicator.stringToProxy(
-                "ChatService:ws -h localhost -p 10001"
-            );
+            // Inicializar Ice communicator
+            const initData = new Ice.InitializationData();
+            initData.properties = Ice.createProperties();
             
-            this.chatService = await Chat.ChatServicePrx.checkedCast(proxy);
+            this.communicator = Ice.initialize(initData);
             
-            if (!this.chatService) {
-                throw new Error("Proxy inválido");
-            }
+            console.log(" Communicator inicializado");
             
-            console.log("✓ Conectado al servidor Ice");
+            // Crear proxy al servidor usando WebSocket
+            const proxyString = "ChatService:ws -h localhost -p 10001";
+            console.log(" Conectando a:", proxyString);
             
-            // Solicitar nombre de usuario
-            await this.promptUsername();
+            const base = this.communicator.stringToProxy(proxyString);
+            this.chatService = base;
             
-            // Iniciar polling para actualizar mensajes y usuarios
-            this.startPolling();
+            console.log(" Conectado al servidor Ice");
+            
+            // Configurar el modal de username
+            this.setupUsernameModal();
             
         } catch (error) {
-            console.error("Error conectando:", error);
-            alert("No se pudo conectar al servidor. Asegúrate de que esté ejecutándose.");
+            console.error(" Error conectando:", error);
+            alert("No se pudo conectar al servidor: " + error.message);
+            
+            // Retry después de 3 segundos
+            setTimeout(() => this.connect(), 3000);
         }
     }
 
-    async promptUsername() {
-        const username = prompt("Ingresa tu nombre de usuario:");
-        if (!username || username.trim() === '') {
-            alert("Debes ingresar un nombre de usuario");
-            return this.promptUsername();
-        }
+    setupUsernameModal() {
+        const modal = document.getElementById('usernameModal');
+        const input = document.getElementById('usernameInput');
+        const joinBtn = document.getElementById('joinChatBtn');
         
-        try {
-            this.currentUser = await this.chatService.joinChat(username.trim());
-            console.log("Usuario registrado:", this.currentUser);
-            this.updateChatHeader("Chat General", "Conectado como " + this.currentUser.username);
-        } catch (error) {
-            console.error("Error al unirse al chat:", error);
-            alert("Error al unirse al chat");
-        }
+        // Mostrar el modal
+        modal.classList.add('active');
+        input.focus();
+        
+        const handleJoin = async () => {
+            const username = input.value.trim();
+            
+            if (!username || username.length < 2) {
+                input.style.borderColor = 'var(--danger)';
+                input.placeholder = 'Por favor ingresa un nombre válido (mínimo 2 caracteres)';
+                input.value = '';
+                input.focus();
+                return;
+            }
+            
+            // Deshabilitar botón mientras se conecta
+            joinBtn.disabled = true;
+            joinBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Conectando...';
+            
+            try {
+                console.log(" Intentando unirse con usuario:", username);
+                
+                // Llamar a joinChat usando Ice
+                const request = new Ice.OutputStream(this.communicator);
+                request.startEncapsulation();
+                request.writeString(username);
+                request.endEncapsulation();
+                
+                console.log(" Enviando petición joinChat al servidor...");
+                
+                const response = await this.chatService.ice_invoke(
+                    "joinChat", 
+                    Ice.OperationMode.Normal, 
+                    request.finished()
+                );
+                
+                console.log(" Respuesta recibida:", response);
+                
+                if (response.ok) {
+                    const reply = new Ice.InputStream(this.communicator, response.outParams);
+                    reply.startEncapsulation();
+                    
+                    // Leer UserDTO
+                    this.currentUser = {
+                        id: reply.readString(),
+                        username: reply.readString(),
+                        isOnline: reply.readBool(),
+                        connectedAt: reply.readLong()
+                    };
+                    
+                    reply.endEncapsulation();
+                    
+                    console.log(" Usuario registrado exitosamente:", this.currentUser);
+                    this.updateChatHeader("Chat General", "Conectado como " + this.currentUser.username);
+                    
+                    // Ocultar modal
+                    modal.classList.remove('active');
+                    
+                    // Iniciar polling
+                    this.startPolling();
+                    
+                    // Mensaje de bienvenida
+                    this.showNotification("¡Bienvenido " + this.currentUser.username + "!", "success");
+                    
+                } else {
+                    throw new Error("Respuesta no válida del servidor");
+                }
+            } catch (error) {
+                console.error(" Error al unirse al chat:", error);
+                
+                // Restaurar botón
+                joinBtn.disabled = false;
+                joinBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Unirse al Chat';
+                input.style.borderColor = 'var(--danger)';
+                input.value = '';
+                input.placeholder = 'Error al conectar. Intenta nuevamente';
+                input.focus();
+                
+                alert("Error al conectar con el servidor:\n" + error.message + "\n\n¿Está el servidor corriendo?");
+            }
+        };
+        
+        // Manejar click en botón
+        joinBtn.onclick = handleJoin;
+        
+        // Manejar Enter en input
+        input.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+                handleJoin();
+            }
+        };
+        
+        // Evitar cerrar el modal clickeando fuera
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                input.focus();
+            }
+        };
     }
 
     startPolling() {
-        // Actualizar mensajes y usuarios cada 1 segundo
-        setInterval(async () => {
+        console.log(" Iniciando polling de mensajes y usuarios...");
+        
+        // Actualizar cada segundo
+        this.pollInterval = setInterval(async () => {
             await this.updateMessages();
             await this.updateUsers();
         }, 1000);
+        
+        // Primera actualización inmediata
+        this.updateMessages();
+        this.updateUsers();
     }
 
     async updateMessages() {
         try {
-            const messages = await this.chatService.getMessages();
-            this.renderMessages(messages);
+            const request = new Ice.OutputStream(this.communicator);
+            request.startEncapsulation();
+            request.endEncapsulation();
+            
+            const response = await this.chatService.ice_invoke("getMessages", Ice.OperationMode.Normal, request.finished());
+            
+            if (response.ok) {
+                const reply = new Ice.InputStream(this.communicator, response.outParams);
+                reply.startEncapsulation();
+                
+                const messages = this.readMessageArray(reply);
+                reply.endEncapsulation();
+                
+                this.renderMessages(messages);
+            }
         } catch (error) {
             console.error("Error obteniendo mensajes:", error);
         }
@@ -91,19 +208,77 @@ class ChatApp {
 
     async updateUsers() {
         try {
-            const users = await this.chatService.getUsers();
-            this.renderContacts(users);
+            const request = new Ice.OutputStream(this.communicator);
+            request.startEncapsulation();
+            request.endEncapsulation();
+            
+            const response = await this.chatService.ice_invoke("getUsers", Ice.OperationMode.Normal, request.finished());
+            
+            if (response.ok) {
+                const reply = new Ice.InputStream(this.communicator, response.outParams);
+                reply.startEncapsulation();
+                
+                const users = this.readUserArray(reply);
+                reply.endEncapsulation();
+                
+                this.renderContacts(users);
+            }
         } catch (error) {
             console.error("Error obteniendo usuarios:", error);
         }
     }
 
+    readMessageArray(stream) {
+        const size = stream.readSize();
+        const messages = [];
+        
+        for (let i = 0; i < size; i++) {
+            messages.push({
+                id: stream.readString(),
+                senderId: stream.readString(),
+                senderName: stream.readString(),
+                content: stream.readString(),
+                timestamp: stream.readLong(),
+                type: { value: stream.readEnum(3) }
+            });
+        }
+        
+        return messages;
+    }
+
+    readUserArray(stream) {
+        const size = stream.readSize();
+        const users = [];
+        
+        for (let i = 0; i < size; i++) {
+            users.push({
+                id: stream.readString(),
+                username: stream.readString(),
+                isOnline: stream.readBool(),
+                connectedAt: stream.readLong()
+            });
+        }
+        
+        return users;
+    }
+
     renderContacts(users) {
         this.contactsList.innerHTML = '';
         
-        users.forEach(user => {
-            if (user.id === this.currentUser.id) return; // No mostrar el usuario actual
-            
+        const onlineUsers = users.filter(user => 
+            user.id !== this.currentUser.id && user.isOnline
+        );
+        
+        if (onlineUsers.length === 0) {
+            this.contactsList.innerHTML = `
+                <div class="contact" style="justify-content: center; padding: 20px;">
+                    <span style="color: var(--text-muted);">No hay otros usuarios conectados</span>
+                </div>
+            `;
+            return;
+        }
+        
+        onlineUsers.forEach(user => {
             const contactDiv = document.createElement('div');
             contactDiv.className = 'contact';
             contactDiv.onclick = () => this.selectContact(user);
@@ -126,23 +301,30 @@ class ChatApp {
     }
 
     renderMessages(messages) {
-        // Limpiar placeholder si existe
         const placeholder = this.messagesContainer.querySelector('.messages-placeholder');
         if (placeholder && messages.length > 0) {
             placeholder.remove();
         }
         
-        // Guardar posición de scroll
         const shouldScrollDown = this.isScrolledToBottom();
         
         this.messagesContainer.innerHTML = '';
+        
+        if (messages.length === 0) {
+            this.messagesContainer.innerHTML = `
+                <div class="messages-placeholder">
+                    <i class="fas fa-comment-dots"></i>
+                    <p>No hay mensajes aún. ¡Sé el primero en escribir!</p>
+                </div>
+            `;
+            return;
+        }
         
         messages.forEach(msg => {
             const messageDiv = this.createMessageElement(msg);
             this.messagesContainer.appendChild(messageDiv);
         });
         
-        // Auto-scroll si estaba al final
         if (shouldScrollDown) {
             this.scrollToBottom();
         }
@@ -153,29 +335,26 @@ class ChatApp {
         const messageDiv = document.createElement('div');
         
         if (msg.type.value === Chat.MessageTypeEnum.SYSTEM.value) {
-            // Mensaje del sistema
             messageDiv.className = 'system-message';
             messageDiv.innerHTML = `
                 <div class="system-message-content">
                     <i class="fas fa-info-circle"></i>
-                    ${msg.content}
+                    ${this.escapeHtml(msg.content)}
                 </div>
             `;
         } else if (msg.type.value === Chat.MessageTypeEnum.VOICECALL.value) {
-            // Llamada de voz
             messageDiv.className = isMyMessage ? 'message my-message' : 'message other-message';
             messageDiv.innerHTML = `
                 <div class="message-content">
-                    <i class="fas fa-phone"></i> ${msg.content}
+                    <i class="fas fa-phone"></i> ${this.escapeHtml(msg.content)}
                 </div>
-                ${!isMyMessage ? `<div class="message-sender">${msg.senderName}</div>` : ''}
+                ${!isMyMessage ? `<div class="message-sender">${this.escapeHtml(msg.senderName)}</div>` : ''}
             `;
         } else {
-            // Mensaje de texto normal
             messageDiv.className = isMyMessage ? 'message my-message' : 'message other-message';
             messageDiv.innerHTML = `
                 <div class="message-content">${this.escapeHtml(msg.content)}</div>
-                ${!isMyMessage ? `<div class="message-sender">${msg.senderName}</div>` : ''}
+                ${!isMyMessage ? `<div class="message-sender">${this.escapeHtml(msg.senderName)}</div>` : ''}
             `;
         }
         
@@ -187,11 +366,18 @@ class ChatApp {
         if (!content || !this.currentUser) return;
         
         try {
-            await this.chatService.sendMessage(
-                this.currentUser.id,
-                content,
-                Chat.MessageTypeEnum.TEXT
-            );
+            console.log(" Enviando mensaje:", content);
+            
+            const request = new Ice.OutputStream(this.communicator);
+            request.startEncapsulation();
+            request.writeString(this.currentUser.id);
+            request.writeString(content);
+            request.writeEnum(Chat.MessageTypeEnum.TEXT.value, 3);
+            request.endEncapsulation();
+            
+            await this.chatService.ice_invoke("sendMessage", Ice.OperationMode.Normal, request.finished());
+            
+            console.log(" Mensaje enviado exitosamente");
             
             this.messageInput.value = '';
             this.messageInput.focus();
@@ -199,8 +385,8 @@ class ChatApp {
             // Actualizar inmediatamente
             await this.updateMessages();
         } catch (error) {
-            console.error("Error enviando mensaje:", error);
-            alert("Error al enviar mensaje");
+            console.error(" Error enviando mensaje:", error);
+            alert("Error al enviar mensaje: " + error.message);
         }
     }
 
@@ -208,7 +394,6 @@ class ChatApp {
         this.selectedContact = user;
         this.updateChatHeader(user.username, user.isOnline ? 'En línea' : 'Desconectado');
         
-        // Actualizar UI
         document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
         event.currentTarget.classList.add('active');
     }
@@ -239,10 +424,24 @@ class ChatApp {
         return div.innerHTML;
     }
 
+    showNotification(message, type = 'info') {
+        console.log(`[${type.toUpperCase()}] ${message}`);
+    }
+
     async disconnect() {
-        if (this.currentUser) {
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+        }
+        
+        if (this.currentUser && this.chatService) {
             try {
-                await this.chatService.leaveChat(this.currentUser.id);
+                const request = new Ice.OutputStream(this.communicator);
+                request.startEncapsulation();
+                request.writeString(this.currentUser.id);
+                request.endEncapsulation();
+                
+                await this.chatService.ice_invoke("leaveChat", Ice.OperationMode.Normal, request.finished());
+                console.log(" Desconectado correctamente");
             } catch (error) {
                 console.error("Error al desconectar:", error);
             }
@@ -254,11 +453,36 @@ class ChatApp {
     }
 }
 
+// Añadir estilos para mensajes del sistema
+const style = document.createElement('style');
+style.textContent = `
+    .system-message {
+        align-self: center;
+        margin: 10px 0;
+    }
+    .system-message-content {
+        background: var(--bg-card);
+        color: var(--text-muted);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .system-message-content i {
+        color: var(--secondary);
+    }
+`;
+document.head.appendChild(style);
+
 // Inicializar la aplicación
 let app;
 
 window.addEventListener('DOMContentLoaded', async () => {
+    console.log(" Iniciando ChatApp...");
     app = new ChatApp();
+    window.chatApp = app;
     
     // Conectar al servidor
     setTimeout(async () => {
@@ -272,89 +496,3 @@ window.addEventListener('beforeunload', () => {
         app.disconnect();
     }
 });
-
-// Funcionalidad del modal de grupos
-document.addEventListener('DOMContentLoaded', () => {
-    const createGroupBtn = document.getElementById('createGroupBtn');
-    const createGroupModal = document.getElementById('createGroupModal');
-    const closeModalBtns = document.querySelectorAll('.modal-close');
-    const createGroupSubmit = createGroupModal.querySelector('.btn-primary');
-
-    createGroupBtn.addEventListener('click', async () => {
-        if (!app || !app.currentUser) {
-            alert("Debes estar conectado para crear un grupo");
-            return;
-        }
-        
-        // Obtener usuarios para seleccionar
-        try {
-            const users = await app.chatService.getUsers();
-            renderUserSelectList(users);
-            createGroupModal.classList.add('active');
-        } catch (error) {
-            console.error("Error obteniendo usuarios:", error);
-        }
-    });
-
-    closeModalBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            createGroupModal.classList.remove('active');
-        });
-    });
-
-    createGroupModal.addEventListener('click', (e) => {
-        if (e.target === createGroupModal) {
-            createGroupModal.classList.remove('active');
-        }
-    });
-
-    createGroupSubmit.addEventListener('click', async () => {
-        const groupNameInput = createGroupModal.querySelector('.form-input');
-        const groupName = groupNameInput.value.trim();
-        
-        if (!groupName) {
-            alert("Debes ingresar un nombre para el grupo");
-            return;
-        }
-        
-        try {
-            const group = await app.chatService.createGroup(groupName, app.currentUser.id);
-            console.log("Grupo creado:", group);
-            
-            // Agregar usuarios seleccionados
-            const selectedUsers = createGroupModal.querySelectorAll('input[type="checkbox"]:checked');
-            for (const checkbox of selectedUsers) {
-                await app.chatService.joinGroup(group.id, checkbox.value);
-            }
-            
-            alert("Grupo creado exitosamente");
-            createGroupModal.classList.remove('active');
-            groupNameInput.value = '';
-        } catch (error) {
-            console.error("Error creando grupo:", error);
-            alert("Error al crear el grupo");
-        }
-    });
-});
-
-function renderUserSelectList(users) {
-    const userSelectList = document.querySelector('.user-select-list');
-    userSelectList.innerHTML = '';
-    
-    users.forEach(user => {
-        if (user.id === app.currentUser.id) return;
-        
-        const userItem = document.createElement('div');
-        userItem.className = 'user-select-item';
-        
-        const initial = user.username.charAt(0).toUpperCase();
-        
-        userItem.innerHTML = `
-            <input type="checkbox" value="${user.id}" id="user_${user.id}">
-            <div class="avatar-small">${initial}</div>
-            <label for="user_${user.id}">${user.username}</label>
-        `;
-        
-        userSelectList.appendChild(userItem);
-    });
-}

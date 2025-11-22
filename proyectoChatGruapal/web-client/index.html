@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatApp - General Prototype</title>
-    <!-- Link to the stylesheet -->
+    <title>ChatApp - Ice WebSocket</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Link to Font icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Ice.js desde CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ice/3.7.10/Ice.min.js"></script>
 </head>
 <body>
     <div class="app">
@@ -30,9 +31,10 @@
                 </div>
             </div>
 
-            <!-- The contacts container is empty, ready to be filled dynamically -->
             <div id="contacts" class="contacts-list">
-                <!-- Contacts will appear here when the backend is connected -->
+                <div class="contact" style="justify-content: center; padding: 20px;">
+                    <span style="color: var(--text-muted);">Conectando al servidor...</span>
+                </div>
             </div>
         </aside>
         
@@ -78,7 +80,36 @@
         </main>
     </div>
 
-    <!-- MODAL FOR CREATING A GROUP (Hidden by default) -->
+      <!-- MODAL FOR USERNAME INPUT -->
+    <div class="modal-overlay active" id="usernameModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>
+                    <i class="fas fa-user-circle"></i>
+                    Bienvenido a ChatApp
+                </h3>
+            </div>
+            <div class="form-group">
+                <label>Ingresa tu nombre de usuario</label>
+                <input 
+                    type="text" 
+                    id="usernameInput" 
+                    class="form-input" 
+                    placeholder="Ej: Juan Pérez"
+                    autofocus
+                    maxlength="30"
+                >
+                <small style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px; display: block;">
+                    Este nombre será visible para otros usuarios
+                </small>
+            </div>
+            <button class="btn-primary" id="joinChatBtn">
+                <i class="fas fa-sign-in-alt"></i> Unirse al Chat
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL FOR CREATING A GROUP -->
     <div class="modal-overlay" id="createGroupModal">
         <div class="modal">
             <div class="modal-header">
@@ -87,24 +118,26 @@
             </div>
             <div class="form-group">
                 <label>Group Name</label>
-                <input type="text" class="form-input" placeholder="e.g., Development Team">
+                <input type="text" id="groupNameInput" class="form-input" placeholder="e.g., Development Team">
             </div>
             <div class="form-group">
                 <label>Select Participants</label>
-                <div class="user-select-list">
-                    <!-- Empty container ready to be filled with real contacts -->
+                <div class="user-select-list" id="userSelectList">
                     <p class="placeholder-text">Available contacts to add to the group will appear here.</p>
                 </div>
             </div>
-            <button class="btn-primary">
+            <button class="btn-primary" id="createGroupSubmit">
                 <i class="fas fa-plus"></i> Create Group
             </button>
         </div>
     </div>
 
+    <!-- Incluir el archivo JavaScript del chat -->
+    <script src="src/pages/ChatApp.js"></script>
+    
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            <!-- Voice recording UI logic -->
+            // Voice recording UI logic
             const micBtn = document.querySelector('.mic-btn');
             const normalInput = document.getElementById('normalInput');
             const recordingInput = document.getElementById('recordingInput');
@@ -123,27 +156,109 @@
             // Create group modal logic
             const createGroupBtn = document.getElementById('createGroupBtn');
             const createGroupModal = document.getElementById('createGroupModal');
-            const closeModalBtns = document.querySelectorAll('.modal-close, .btn-primary');
+            const closeModalBtns = document.querySelectorAll('.modal-close');
 
-            //Open the modal
-            createGroupBtn.addEventListener('click', () => {
-                createGroupModal.classList.add('active');
+            createGroupBtn.addEventListener('click', async () => {
+                if (!window.chatApp || !window.chatApp.currentUser) {
+                    alert("Debes estar conectado para crear un grupo");
+                    return;
+                }
+                
+                try {
+                    const users = await window.chatApp.chatService.getUsers();
+                    renderUserSelectList(users);
+                    createGroupModal.classList.add('active');
+                } catch (error) {
+                    console.error("Error obteniendo usuarios:", error);
+                    alert("Error al cargar usuarios");
+                }
             });
 
-            // Close the modal with buttons
             closeModalBtns.forEach(btn => {
                 btn.addEventListener('click', () => {
                     createGroupModal.classList.remove('active');
                 });
             });
 
-            // Close the modal by clicking on the overlay background
             createGroupModal.addEventListener('click', (e) => {
                 if (e.target === createGroupModal) {
                     createGroupModal.classList.remove('active');
                 }
             });
+
+
+
+            // Submit group creation
+            document.getElementById('createGroupSubmit').addEventListener('click', async () => {
+                const groupNameInput = document.getElementById('groupNameInput');
+                const groupName = groupNameInput.value.trim();
+                
+                if (!groupName) {
+                    alert("Debes ingresar un nombre para el grupo");
+                    return;
+                }
+                
+                if (!window.chatApp || !window.chatApp.currentUser) {
+                    alert("No estás conectado");
+                    return;
+                }
+                
+                try {
+                    const group = await window.chatApp.chatService.createGroup(
+                        groupName, 
+                        window.chatApp.currentUser.id
+                    );
+                    
+                    console.log("Grupo creado:", group);
+                    
+                    const selectedUsers = document.querySelectorAll('#userSelectList input[type="checkbox"]:checked');
+                    for (const checkbox of selectedUsers) {
+                        await window.chatApp.chatService.joinGroup(group.id, checkbox.value);
+                    }
+                    
+                    alert("Grupo creado exitosamente: " + groupName);
+                    createGroupModal.classList.remove('active');
+                    groupNameInput.value = '';
+                } catch (error) {
+                    console.error("Error creando grupo:", error);
+                    alert("Error al crear el grupo");
+                }
+            });
         });
+
+
+
+        function renderUserSelectList(users) {
+            const userSelectList = document.getElementById('userSelectList');
+            userSelectList.innerHTML = '';
+            
+            if (!window.chatApp || !window.chatApp.currentUser) {
+                userSelectList.innerHTML = '<p class="placeholder-text">No hay usuarios disponibles</p>';
+                return;
+            }
+            
+            const otherUsers = users.filter(user => user.id !== window.chatApp.currentUser.id);
+            
+            if (otherUsers.length === 0) {
+                userSelectList.innerHTML = '<p class="placeholder-text">No hay otros usuarios conectados</p>';
+                return;
+            }
+            
+            otherUsers.forEach(user => {
+                const userItem = document.createElement('div');
+                userItem.className = 'user-select-item';
+                
+                const initial = user.username.charAt(0).toUpperCase();
+                
+                userItem.innerHTML = `
+                    <input type="checkbox" value="${user.id}" id="user_${user.id}">
+                    <div class="avatar-small">${initial}</div>
+                    <label for="user_${user.id}">${user.username}</label>
+                `;
+                
+                userSelectList.appendChild(userItem);
+            });
+        }
     </script>
 </body>
 </html>
