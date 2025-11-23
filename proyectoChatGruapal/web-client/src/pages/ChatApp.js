@@ -253,7 +253,7 @@ class ChatApp {
         // Verificar si el usuario ya pertenece al grupo
         const isMember = group.memberIds && group.memberIds.includes(this.currentUser.id);
 
-        groupDiv.onclick = () => this.selectGroup(group);
+        groupDiv.onclick = () => this.handleGroupClick(group, isMember);
 
         const memberCount = group.memberIds ? group.memberIds.length : 0;
         const initials = group.name.split(' ').map(word => word[0]).join('').toUpperCase().substring(0, 2);
