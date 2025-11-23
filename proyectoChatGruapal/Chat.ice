@@ -80,5 +80,10 @@ module Chat {
         // Voice calls
         void startVoiceCall(string userId, string targetUserId);
         void endVoiceCall(string userId);
+
+        // Private Mesage Groups
+        void sendGroupMessage(string groupId, string userId, string content, MessageTypeEnum type);
+        MessageList getGroupMessages(string groupId);
     }
+
 };

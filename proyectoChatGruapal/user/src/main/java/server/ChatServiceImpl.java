@@ -19,6 +19,9 @@ public class ChatServiceImpl implements ChatService, Subject {
     
     // Almacenamiento de mensajes privados: clave = chatId (userId1_userId2 ordenado), valor = lista de mensajes
     private final Map<String, List<Message>> privateMessages = new ConcurrentHashMap<>();
+
+    //Almacenamiento de mensajes privados grupos
+    private final Map<String, List<Message>> groupMessages = new ConcurrentHashMap<>();
     
     // Contadores para IDs
     private int userCounter = 0;
@@ -346,4 +349,74 @@ public class ChatServiceImpl implements ChatService, Subject {
         
         observers.removeAll(toRemove);
     }
+
+   
+
+    // ========== Metodos para mensajes y chat privado grupos ==========
+
+    @Override
+    public synchronized void sendGroupMessage(String groupId, String userId, 
+            String content, MessageTypeEnum type, Current current) {
+        
+        // Validar que el grupo existe
+        UserGroup group = groups.get(groupId);
+        if (group == null) {
+            System.err.println(" Grupo no encontrado: " + groupId);
+            return;
+        }
+        
+        // Validar que el usuario existe
+        User user = users.get(userId);
+        if (user == null) {
+            System.err.println(" Usuario no encontrado: " + userId);
+            return;
+        }
+        
+        // Verificar que el usuario pertenece al grupo
+        if (!group.hasParticipant(userId)) {
+            System.err.println(" Usuario " + user.getUsername() + " no pertenece al grupo " + group.getName());
+            return;
+        }
+        
+        // Convertir tipo de mensaje
+        MessageType messageType = MessageType.fromIceEnum(type);
+        
+        // Crear el mensaje
+        Message message = new Message(
+            "msg_" + (++messageCounter),
+            userId,
+            user.getUsername(),
+            content,
+            messageType
+        );
+        
+        // Almacenar mensaje en el grupo
+        groupMessages.computeIfAbsent(groupId, k -> new CopyOnWriteArrayList<>()).add(message);
+        
+        // Log en consola del servidor
+        System.out.println(" [Grupo: " + group.getName() + "] " + user.getUsername() + ": " + content);
+    }
+
+    @Override
+    public MessageDTO[] getGroupMessages(String groupId, Current current) {
+        // Validar que el grupo existe
+        if (!groups.containsKey(groupId)) {
+            System.err.println(" Grupo no encontrado: " + groupId);
+            return new MessageDTO[0];
+        }
+        
+        // Obtener mensajes del grupo
+        List<Message> messages = groupMessages.get(groupId);
+        
+        // Si no hay mensajes, retornar array vacío
+        if (messages == null || messages.isEmpty()) {
+            return new MessageDTO[0];
+        }
+        
+        // Convertir mensajes a DTOs y retornar
+        return messages.stream()
+            .map(Message::toDTO)
+            .toArray(MessageDTO[]::new);
+    }
+
 }

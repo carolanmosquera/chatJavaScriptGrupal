@@ -15,6 +15,7 @@ class ChatApp {
         this.selectedContact = null;
         this.pollInterval = null;
         this.selectedGroup = null;
+        this.userGroups = new Set(); // Grupos a los que el usuario pertenece
 
 
         // Referencias DOM
@@ -173,7 +174,13 @@ class ChatApp {
     async updateMessages() {
         try {
             let messages;
-            if (this.selectedContact) {
+            if (this.selectedGroup) {
+                // Obtener mensajes del grupo desde el servidor
+                messages = await this.chatService.getGroupMessages(this.selectedGroup.id);
+
+                console.log(` Mensajes del grupo ${this.selectedGroup.name}:`, messages.length);
+
+            } else if (this.selectedContact) {
                 // Obtener mensajes privados del chat seleccionado
                 messages = await this.chatService.getPrivateMessages(
                     this.currentUser.id,
@@ -201,6 +208,15 @@ class ChatApp {
     async updateGroups() {
         try {
             const groups = await this.chatService.getGroups();
+
+            // Actualizar el Set de grupos del usuario
+            this.userGroups.clear();
+            groups.forEach(group => {
+                if (group.memberIds && group.memberIds.includes(this.currentUser.id)) {
+                    this.userGroups.add(group.id);
+                }
+            });
+
             this.renderGroups(groups);
         } catch (error) {
             console.error("Error obteniendo grupos:", error);
@@ -228,26 +244,130 @@ class ChatApp {
             groupsContainer.appendChild(groupElement);
         });
     }
-     //metodo Crear elemento HTML para grupo
-     createGroupElement(group) {
+
+    //metodo Crear elemento HTML para grupo 
+    createGroupElement(group) {
         const groupDiv = document.createElement('div');
         groupDiv.className = 'contact group';
+
+        // Verificar si el usuario ya pertenece al grupo
+        const isMember = group.memberIds && group.memberIds.includes(this.currentUser.id);
+
         groupDiv.onclick = () => this.selectGroup(group);
 
         const memberCount = group.memberIds ? group.memberIds.length : 0;
         const initials = group.name.split(' ').map(word => word[0]).join('').toUpperCase().substring(0, 2);
+
+         // Añadir indicador visual si ya eres miembro
+        const memberBadge = isMember ? '<span class="member-badge">✓ Miembro</span>' : '';
 
         groupDiv.innerHTML = `
             <div class="avatar group-avatar">${initials}</div>
             <div class="contact-info">
                 <div class="contact-name">${this.escapeHtml(group.name)}</div>
                 <div class="contact-preview group-preview">
-                    <i class="fas fa-users"></i> ${memberCount} miembros
+                    <i class="fas fa-users"></i> ${memberCount} miembro${memberCount !== 1 ? 's' : ''}
+                    ${memberBadge}
                 </div>
             </div>
         `;
 
+        // Resaltar si está seleccionado
+        if (this.selectedGroup && this.selectedGroup.id === group.id) {
+            groupDiv.classList.add('active');
+        }
+
         return groupDiv;
+    }
+
+    async handleGroupClick(group, isMember) {
+        if (!isMember) {
+            // Mostrar modal de confirmación para unirse
+            this.showJoinGroupModal(group);
+        } else {
+            // Ya es miembro, abrir el chat del grupo
+            this.selectGroup(group);
+        }
+    }
+
+    showJoinGroupModal(group) {
+        // Crear modal dinámico
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay active';
+        modal.id = 'joinGroupModal';
+        
+        modal.innerHTML = `
+            <div class="modal join-modal">
+                <div class="modal-header">
+                    <h3>
+                        <i class="fas fa-users"></i>
+                        Unirse al grupo
+                    </h3>
+                </div>
+                <div style="margin: 20px 0;">
+                    <p style="color: var(--text); font-size: 1.1rem; text-align: center; margin-bottom: 10px;">
+                        ¿Quieres unirte al grupo <strong>${this.escapeHtml(group.name)}</strong>?
+                    </p>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; text-align: center;">
+                        Actualmente tiene ${group.memberIds ? group.memberIds.length : 0} miembro${group.memberIds && group.memberIds.length !== 1 ? 's' : ''}
+                    </p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-secondary" id="cancelJoinBtn">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button class="btn-primary" id="confirmJoinBtn">
+                        <i class="fas fa-check"></i> Unirse
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Event listeners
+        const confirmBtn = modal.querySelector('#confirmJoinBtn');
+        const cancelBtn = modal.querySelector('#cancelJoinBtn');
+
+        confirmBtn.onclick = async () => {
+            try {
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uniéndose...';
+                
+                // Llamar al servidor para unirse al grupo
+                await this.chatService.joinGroup(group.id, this.currentUser.id);
+                
+                this.userGroups.add(group.id);
+                this.showNotification(`Te has unido al grupo ${group.name}`, 'success');
+                
+                modal.remove();
+                
+                // Actualizar grupos inmediatamente
+                await this.updateGroups();
+                
+                // Pequeño delay para asegurar sincronización con el servidor
+                setTimeout(async () => {
+                    // Buscar el grupo actualizado
+                    const groups = await this.chatService.getGroups();
+                    const updatedGroup = groups.find(g => g.id === group.id);
+                    if (updatedGroup) {
+                        this.selectGroup(updatedGroup);
+                    }
+                }, 300);
+                
+            } catch (error) {
+                console.error(" Error uniéndose al grupo:", error);
+                alert("Error al unirse al grupo: " + error.message);
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i class="fas fa-check"></i> Unirse';
+            }
+        };
+
+        cancelBtn.onclick = () => modal.remove();
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) modal.remove();
+        };
     }
 
     //metodo Seleccionar grupo
@@ -255,18 +375,27 @@ class ChatApp {
         this.selectedGroup = group;
         this.selectedContact = null;
 
+        const memberCount = group.memberIds ? group.memberIds.length : 0;
         this.updateChatHeader(
             group.name, 
-            `Grupo • ${group.memberIds ? group.memberIds.length : 0} miembros`
+            `Grupo • ${memberCount} miembro${memberCount !== 1 ? 's' : ''}`
         );
 
         // Resaltar grupo seleccionado
         document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
-        document.querySelectorAll('.group').forEach(g => g.classList.remove('active'));
-        event.currentTarget.classList.add('active');
+        const groupElements = Array.from(document.querySelectorAll('.contact.group'));
+        const selectedElement = groupElements.find(el => {
+            const nameElement = el.querySelector('.contact-name');
+            return nameElement && nameElement.textContent === group.name;
+        });
+        if (selectedElement) {
+            selectedElement.classList.add('active');
+        }
 
-        // TODO: Cargar mensajes específicos del grupo (si los implementas)
-        console.log("Grupo seleccionado:", group.name);
+        // Cargar mensajes del grupo inmediatamente
+        this.updateMessages();
+        
+        console.log(` Grupo seleccionado: ${group.name} (ID: ${group.id})`);
     }
 
     // metodo Crear sección de grupos en el sidebar
@@ -382,9 +511,13 @@ class ChatApp {
             `;
         } else {
             messageDiv.className = isMyMessage ? 'message my-message' : 'message other-message';
+            
+            // En grupos, SIEMPRE mostrar el nombre del remitente para evitar confusión
+            const showSender = this.selectedGroup || !isMyMessage;
+            
             messageDiv.innerHTML = `
                 <div class="message-content">${this.escapeHtml(msg.content)}</div>
-                ${!isMyMessage ? `<div class="message-sender">${this.escapeHtml(msg.senderName)}</div>` : ''}
+                ${showSender ? `<div class="message-sender">${this.escapeHtml(msg.senderName)}</div>` : ''}
             `;
         }
 
@@ -398,7 +531,16 @@ class ChatApp {
         try {
             console.log(" Enviando mensaje:", content);
 
-            if (this.selectedContact) {
+            if (this.selectedGroup) {
+                // Enviar mensaje al grupo (usando sendGroupMessage del servidor)
+                await this.chatService.sendGroupMessage(
+                    this.selectedGroup.id,
+                    this.currentUser.id,
+                    content,
+                    Chat.MessageTypeEnum.TEXT
+                );
+                console.log(` Mensaje enviado al grupo: ${this.selectedGroup.name}`);
+            } else if (this.selectedContact) {
                 // Enviar mensaje privado
                 await this.chatService.sendPrivateMessage(
                     this.currentUser.id,
@@ -406,7 +548,7 @@ class ChatApp {
                     content,
                     Chat.MessageTypeEnum.TEXT
                 );
-                console.log(" Mensaje privado enviado exitosamente");
+                console.log(` Mensaje privado enviado a: ${this.selectedContact.username}`);
             } else {
                 // Enviar mensaje al chat general
                 await this.chatService.sendMessage(
@@ -414,14 +556,15 @@ class ChatApp {
                     content,
                     Chat.MessageTypeEnum.TEXT
                 );
-                console.log(" Mensaje enviado exitosamente");
+                console.log(" Mensaje enviado al chat general");
             }
 
             this.messageInput.value = '';
             this.messageInput.focus();
-
-            // Actualizar inmediatamente
+            
+            // Actualizar mensajes inmediatamente
             await this.updateMessages();
+
         } catch (error) {
             console.error(" Error enviando mensaje:", error);
             alert("Error al enviar mensaje: " + error.message);
@@ -496,6 +639,25 @@ class ChatApp {
 
     showNotification(message, type = 'info') {
         console.log(`[${type.toUpperCase()}] ${message}`);
+        
+        // Crear notificación visual
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+            <i class="fas fa-${type === 'success' ? 'check-circle' : 'info-circle'}"></i>
+            ${this.escapeHtml(message)}
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 100);
+        
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
     }
 
     async disconnect() {
@@ -518,7 +680,7 @@ class ChatApp {
     }
 }
 
-// Añadir estilos para mensajes del sistema
+// Añadir estilos adicionales
 const style = document.createElement('style');
 style.textContent = `
     .system-message {
@@ -537,6 +699,99 @@ style.textContent = `
     }
     .system-message-content i {
         color: var(--secondary);
+    }
+    
+    .member-badge {
+        display: inline-block;
+        background: var(--secondary);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.7rem;
+        margin-left: 8px;
+        font-weight: 600;
+    }
+    
+    .btn-secondary {
+        flex: 1;
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: var(--bg-input);
+        color: var(--text);
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.2s ease;
+    }
+    
+    .btn-secondary:hover {
+        background: var(--bg-card);
+        border-color: var(--text-muted);
+    }
+    
+    .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--bg-card);
+        color: var(--text);
+        padding: 15px 20px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        transform: translateX(400px);
+        opacity: 0;
+        transition: all 0.3s ease;
+        z-index: 2000;
+        max-width: 350px;
+    }
+    
+    .notification.show {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    
+    .notification-success {
+        border-color: var(--secondary);
+    }
+    
+    .notification-success i {
+        color: var(--secondary);
+    }
+    
+    .notification-info i {
+        color: var(--primary);
+    }
+    
+    .back-btn {
+        margin-right: 10px;
+    }
+    
+    .back-btn:hover {
+        transform: translateX(-2px);
+    }
+    
+    .join-modal {
+        animation: modalZoomIn 0.3s ease;
+    }
+    
+    @keyframes modalZoomIn {
+        from {
+            transform: scale(0.9);
+            opacity: 0;
+        }
+        to {
+            transform: scale(1);
+            opacity: 1;
+        }
     }
 `;
 document.head.appendChild(style);

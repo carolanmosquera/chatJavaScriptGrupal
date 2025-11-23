@@ -482,6 +482,88 @@ public interface ChatServicePrx extends com.zeroc.Ice.ObjectPrx
         return f;
     }
 
+    default void sendGroupMessage(String groupId, String userId, String content, MessageTypeEnum type)
+    {
+        sendGroupMessage(groupId, userId, content, type, com.zeroc.Ice.ObjectPrx.noExplicitContext);
+    }
+
+    default void sendGroupMessage(String groupId, String userId, String content, MessageTypeEnum type, java.util.Map<String, String> context)
+    {
+        _iceI_sendGroupMessageAsync(groupId, userId, content, type, context, true).waitForResponse();
+    }
+
+    default java.util.concurrent.CompletableFuture<Void> sendGroupMessageAsync(String groupId, String userId, String content, MessageTypeEnum type)
+    {
+        return _iceI_sendGroupMessageAsync(groupId, userId, content, type, com.zeroc.Ice.ObjectPrx.noExplicitContext, false);
+    }
+
+    default java.util.concurrent.CompletableFuture<Void> sendGroupMessageAsync(String groupId, String userId, String content, MessageTypeEnum type, java.util.Map<String, String> context)
+    {
+        return _iceI_sendGroupMessageAsync(groupId, userId, content, type, context, false);
+    }
+
+    /**
+     * @hidden
+     * @param iceP_groupId -
+     * @param iceP_userId -
+     * @param iceP_content -
+     * @param iceP_type -
+     * @param context -
+     * @param sync -
+     * @return -
+     **/
+    default com.zeroc.IceInternal.OutgoingAsync<Void> _iceI_sendGroupMessageAsync(String iceP_groupId, String iceP_userId, String iceP_content, MessageTypeEnum iceP_type, java.util.Map<String, String> context, boolean sync)
+    {
+        com.zeroc.IceInternal.OutgoingAsync<Void> f = new com.zeroc.IceInternal.OutgoingAsync<>(this, "sendGroupMessage", null, sync, null);
+        f.invoke(false, context, null, ostr -> {
+                     ostr.writeString(iceP_groupId);
+                     ostr.writeString(iceP_userId);
+                     ostr.writeString(iceP_content);
+                     MessageTypeEnum.ice_write(ostr, iceP_type);
+                 }, null);
+        return f;
+    }
+
+    default MessageDTO[] getGroupMessages(String groupId)
+    {
+        return getGroupMessages(groupId, com.zeroc.Ice.ObjectPrx.noExplicitContext);
+    }
+
+    default MessageDTO[] getGroupMessages(String groupId, java.util.Map<String, String> context)
+    {
+        return _iceI_getGroupMessagesAsync(groupId, context, true).waitForResponse();
+    }
+
+    default java.util.concurrent.CompletableFuture<MessageDTO[]> getGroupMessagesAsync(String groupId)
+    {
+        return _iceI_getGroupMessagesAsync(groupId, com.zeroc.Ice.ObjectPrx.noExplicitContext, false);
+    }
+
+    default java.util.concurrent.CompletableFuture<MessageDTO[]> getGroupMessagesAsync(String groupId, java.util.Map<String, String> context)
+    {
+        return _iceI_getGroupMessagesAsync(groupId, context, false);
+    }
+
+    /**
+     * @hidden
+     * @param iceP_groupId -
+     * @param context -
+     * @param sync -
+     * @return -
+     **/
+    default com.zeroc.IceInternal.OutgoingAsync<MessageDTO[]> _iceI_getGroupMessagesAsync(String iceP_groupId, java.util.Map<String, String> context, boolean sync)
+    {
+        com.zeroc.IceInternal.OutgoingAsync<MessageDTO[]> f = new com.zeroc.IceInternal.OutgoingAsync<>(this, "getGroupMessages", null, sync, null);
+        f.invoke(true, context, null, ostr -> {
+                     ostr.writeString(iceP_groupId);
+                 }, istr -> {
+                     MessageDTO[] ret;
+                     ret = MessageListHelper.read(istr);
+                     return ret;
+                 });
+        return f;
+    }
+
     /**
      * Contacts the remote server to verify that the object implements this type.
      * Raises a local exception if a communication error occurs.
