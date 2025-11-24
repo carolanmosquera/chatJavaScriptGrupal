@@ -25,6 +25,10 @@ class ChatApp {
         this.sendBtn = document.getElementById('sendBtn');
         this.chatHeader = document.getElementById('chatHeader');
 
+        this.mediaRecorder = null;
+        this.audioChunks = [];
+        this.isRecording = false;
+
         this.initializeEventListeners();
     }
 
@@ -33,6 +37,19 @@ class ChatApp {
         this.messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.sendMessage();
         });
+
+        // Botón iniciar grabación
+        const micBtn = document.querySelector('.mic-btn');
+        micBtn.addEventListener('click', () => this.startRecording());
+
+        // Botón cancelar grabación
+        const cancelAudioBtn = document.querySelector('#recordingInput .cancel-btn');
+        cancelAudioBtn.addEventListener('click', () => this.cancelRecording());
+
+        // Botón enviar audio
+        const sendAudioBtn = document.querySelector('#recordingInput .send-btn');
+        sendAudioBtn.addEventListener('click', () => this.sendAudioMessage());
+
     }
 
     async connect() {
@@ -160,14 +177,14 @@ class ChatApp {
         this.pollInterval = setInterval(async () => {
             await this.updateMessages();
             await this.updateUsers();
-             //actualiza grupos
-            await this.updateGroups(); 
+            //actualiza grupos
+            await this.updateGroups();
         }, 1000);
 
         // Primera actualización inmediata
         this.updateMessages();
         this.updateUsers();
-        this.updateGroups(); 
+        this.updateGroups();
 
     }
 
@@ -223,8 +240,8 @@ class ChatApp {
         }
     }
 
-     //metodo para renderizar lista de grupos
-     renderGroups(groups) {
+    //metodo para renderizar lista de grupos
+    renderGroups(groups) {
 
         const groupsContainer = document.getElementById('groupsList') || this.createGroupsSection();
 
@@ -258,7 +275,7 @@ class ChatApp {
         const memberCount = group.memberIds ? group.memberIds.length : 0;
         const initials = group.name.split(' ').map(word => word[0]).join('').toUpperCase().substring(0, 2);
 
-         // Añadir indicador visual si ya eres miembro
+        // Añadir indicador visual si ya eres miembro
         const memberBadge = isMember ? '<span class="member-badge">✓ Miembro</span>' : '';
 
         groupDiv.innerHTML = `
@@ -295,7 +312,7 @@ class ChatApp {
         const modal = document.createElement('div');
         modal.className = 'modal-overlay active';
         modal.id = 'joinGroupModal';
-        
+
         modal.innerHTML = `
             <div class="modal join-modal">
                 <div class="modal-header">
@@ -333,18 +350,18 @@ class ChatApp {
             try {
                 confirmBtn.disabled = true;
                 confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uniéndose...';
-                
+
                 // Llamar al servidor para unirse al grupo
                 await this.chatService.joinGroup(group.id, this.currentUser.id);
-                
+
                 this.userGroups.add(group.id);
                 this.showNotification(`Te has unido al grupo ${group.name}`, 'success');
-                
+
                 modal.remove();
-                
+
                 // Actualizar grupos inmediatamente
                 await this.updateGroups();
-                
+
                 // Pequeño delay para asegurar sincronización con el servidor
                 setTimeout(async () => {
                     // Buscar el grupo actualizado
@@ -354,7 +371,7 @@ class ChatApp {
                         this.selectGroup(updatedGroup);
                     }
                 }, 300);
-                
+
             } catch (error) {
                 console.error(" Error uniéndose al grupo:", error);
                 alert("Error al unirse al grupo: " + error.message);
@@ -364,7 +381,7 @@ class ChatApp {
         };
 
         cancelBtn.onclick = () => modal.remove();
-        
+
         modal.onclick = (e) => {
             if (e.target === modal) modal.remove();
         };
@@ -377,7 +394,7 @@ class ChatApp {
 
         const memberCount = group.memberIds ? group.memberIds.length : 0;
         this.updateChatHeader(
-            group.name, 
+            group.name,
             `Grupo • ${memberCount} miembro${memberCount !== 1 ? 's' : ''}`
         );
 
@@ -394,7 +411,7 @@ class ChatApp {
 
         // Cargar mensajes del grupo inmediatamente
         this.updateMessages();
-        
+
         console.log(` Grupo seleccionado: ${group.name} (ID: ${group.id})`);
     }
 
@@ -509,12 +526,24 @@ class ChatApp {
                 </div>
                 ${!isMyMessage ? `<div class="message-sender">${this.escapeHtml(msg.senderName)}</div>` : ''}
             `;
+        } else if (msg.type.value === ChatUI.MessageTypeEnum.AUDIO.value) {
+            const isMyMessage = msg.senderId === this.currentUser.id;
+
+            const audioUrl = "data:audio/webm;base64," + msg.content;
+
+            messageDiv.className = isMyMessage ? 'message my-message' : 'message other-message';
+            messageDiv.innerHTML = `
+        <div class="message-content audio-message">
+            <audio controls src="${audioUrl}"></audio>
+        </div>
+        ${this.selectedGroup || !isMyMessage ? `<div class="message-sender">${this.escapeHtml(msg.senderName)}</div>` : ''}
+    `;
         } else {
             messageDiv.className = isMyMessage ? 'message my-message' : 'message other-message';
-            
+
             // En grupos, SIEMPRE mostrar el nombre del remitente para evitar confusión
             const showSender = this.selectedGroup || !isMyMessage;
-            
+
             messageDiv.innerHTML = `
                 <div class="message-content">${this.escapeHtml(msg.content)}</div>
                 ${showSender ? `<div class="message-sender">${this.escapeHtml(msg.senderName)}</div>` : ''}
@@ -561,7 +590,7 @@ class ChatApp {
 
             this.messageInput.value = '';
             this.messageInput.focus();
-            
+
             // Actualizar mensajes inmediatamente
             await this.updateMessages();
 
@@ -569,6 +598,114 @@ class ChatApp {
             console.error(" Error enviando mensaje:", error);
             alert("Error al enviar mensaje: " + error.message);
         }
+    }
+
+    async startRecording() {
+        try {
+            if (this.isRecording) return;
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            this.mediaRecorder = new MediaRecorder(stream);
+            this.audioChunks = [];
+            this.isRecording = true;
+
+            this.mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) {
+                    this.audioChunks.push(e.data);
+                }
+            };
+
+            this.mediaRecorder.start();
+            console.log("Grabación iniciada...");
+        } catch (e) {
+            console.error("Error iniciando grabación:", e);
+            alert("No se pudo acceder al micrófono");
+        }
+    }
+
+    cancelRecording() {
+        if (!this.isRecording || !this.mediaRecorder) return;
+
+        try {
+            this.mediaRecorder.stop();
+        } catch { }
+
+        this.isRecording = false;
+        this.audioChunks = [];
+        console.log("Grabación cancelada");
+    }
+
+    async sendAudioMessage() {
+
+        if (!this.mediaRecorder) {
+            console.warn("No se ha iniciado una grabación");
+            return;
+        }
+
+        // Forzar finalización de grabación ANTES de intentar enviar
+        if (this.isRecording) {
+            await new Promise(resolve => {
+                this.mediaRecorder.onstop = resolve;
+                try { this.mediaRecorder.stop(); } catch { }
+            });
+        }
+
+        if (this.audioChunks.length === 0) {
+            console.warn("No hay audio para enviar");
+            return;
+        }
+
+
+
+        try {
+            this.mediaRecorder.stop();
+
+            const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+            const base64 = await this.blobToBase64(blob);
+
+            this.isRecording = false;
+            this.audioChunks = [];
+
+            // Enviar a backend según el chat activo
+            if (this.selectedGroup) {
+                await this.chatService.sendGroupMessage(
+                    this.selectedGroup.id,
+                    this.currentUser.id,
+                    base64,
+                    Chat.MessageTypeEnum.AUDIO
+                );
+            } else if (this.selectedContact) {
+                await this.chatService.sendPrivateMessage(
+                    this.currentUser.id,
+                    this.selectedContact.id,
+                    base64,
+                    Chat.MessageTypeEnum.AUDIO
+                );
+            } else {
+                await this.chatService.sendMessage(
+                    this.currentUser.id,
+                    base64,
+                    Chat.MessageTypeEnum.AUDIO
+                );
+            }
+
+            console.log("Audio enviado correctamente");
+            await this.updateMessages();
+
+        } catch (err) {
+            console.error("Error enviando audio:", err);
+            alert("No se pudo enviar el mensaje de audio");
+        }
+    }
+
+    blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     selectContact(user) {
@@ -593,14 +730,14 @@ class ChatApp {
 
     updateChatHeader(title, subtitle) {
         const headerInfo = this.chatHeader.querySelector('.chat-header-info');
-        
+
         // Si hay un contacto seleccionado, agregar botón para volver al chat general
         const backButton = this.selectedContact ? `
             <button class="icon-btn back-btn" title="Volver al chat general" onclick="window.chatApp.backToGeneralChat()">
                 <i class="fas fa-arrow-left"></i>
             </button>
         ` : '';
-        
+
         headerInfo.innerHTML = `
             ${backButton}
             <div class="chat-header-text">
@@ -613,10 +750,10 @@ class ChatApp {
     backToGeneralChat() {
         this.selectedContact = null;
         this.updateChatHeader("Chat General", "Conectado como " + this.currentUser.username);
-        
+
         // Desmarcar todos los contactos
         document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
-        
+
         // Cargar mensajes del chat general
         this.updateMessages();
     }
@@ -639,7 +776,7 @@ class ChatApp {
 
     showNotification(message, type = 'info') {
         console.log(`[${type.toUpperCase()}] ${message}`);
-        
+
         // Crear notificación visual
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
@@ -647,13 +784,13 @@ class ChatApp {
             <i class="fas fa-${type === 'success' ? 'check-circle' : 'info-circle'}"></i>
             ${this.escapeHtml(message)}
         `;
-        
+
         document.body.appendChild(notification);
-        
+
         setTimeout(() => {
             notification.classList.add('show');
         }, 100);
-        
+
         setTimeout(() => {
             notification.classList.remove('show');
             setTimeout(() => notification.remove(), 300);
