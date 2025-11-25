@@ -49,6 +49,8 @@ public interface ChatService extends com.zeroc.Ice.Object
 
     String getActiveCall(String userId, com.zeroc.Ice.Current current);
 
+    String getCallAudio(String userId, com.zeroc.Ice.Current current);
+
     /** @hidden */
     static final String[] _iceIds =
     {
@@ -404,12 +406,34 @@ public interface ChatService extends com.zeroc.Ice.Object
         return inS.setResult(ostr);
     }
 
+    /**
+     * @hidden
+     * @param obj -
+     * @param inS -
+     * @param current -
+     * @return -
+    **/
+    static java.util.concurrent.CompletionStage<com.zeroc.Ice.OutputStream> _iceD_getCallAudio(ChatService obj, final com.zeroc.IceInternal.Incoming inS, com.zeroc.Ice.Current current)
+    {
+        com.zeroc.Ice.Object._iceCheckMode(null, current.mode);
+        com.zeroc.Ice.InputStream istr = inS.startReadParams();
+        String iceP_userId;
+        iceP_userId = istr.readString();
+        inS.endReadParams();
+        String ret = obj.getCallAudio(iceP_userId, current);
+        com.zeroc.Ice.OutputStream ostr = inS.startWriteParams();
+        ostr.writeString(ret);
+        inS.endWriteParams(ostr);
+        return inS.setResult(ostr);
+    }
+
     /** @hidden */
     final static String[] _iceOps =
     {
         "createGroup",
         "endVoiceCall",
         "getActiveCall",
+        "getCallAudio",
         "getGroupMessages",
         "getGroups",
         "getMessages",
@@ -456,69 +480,73 @@ public interface ChatService extends com.zeroc.Ice.Object
             }
             case 3:
             {
-                return _iceD_getGroupMessages(this, in, current);
+                return _iceD_getCallAudio(this, in, current);
             }
             case 4:
             {
-                return _iceD_getGroups(this, in, current);
+                return _iceD_getGroupMessages(this, in, current);
             }
             case 5:
             {
-                return _iceD_getMessages(this, in, current);
+                return _iceD_getGroups(this, in, current);
             }
             case 6:
             {
-                return _iceD_getPrivateMessages(this, in, current);
+                return _iceD_getMessages(this, in, current);
             }
             case 7:
             {
-                return _iceD_getUsers(this, in, current);
+                return _iceD_getPrivateMessages(this, in, current);
             }
             case 8:
             {
-                return com.zeroc.Ice.Object._iceD_ice_id(this, in, current);
+                return _iceD_getUsers(this, in, current);
             }
             case 9:
             {
-                return com.zeroc.Ice.Object._iceD_ice_ids(this, in, current);
+                return com.zeroc.Ice.Object._iceD_ice_id(this, in, current);
             }
             case 10:
             {
-                return com.zeroc.Ice.Object._iceD_ice_isA(this, in, current);
+                return com.zeroc.Ice.Object._iceD_ice_ids(this, in, current);
             }
             case 11:
             {
-                return com.zeroc.Ice.Object._iceD_ice_ping(this, in, current);
+                return com.zeroc.Ice.Object._iceD_ice_isA(this, in, current);
             }
             case 12:
             {
-                return _iceD_joinChat(this, in, current);
+                return com.zeroc.Ice.Object._iceD_ice_ping(this, in, current);
             }
             case 13:
             {
-                return _iceD_joinGroup(this, in, current);
+                return _iceD_joinChat(this, in, current);
             }
             case 14:
             {
-                return _iceD_leaveChat(this, in, current);
+                return _iceD_joinGroup(this, in, current);
             }
             case 15:
             {
-                return _iceD_sendGroupMessage(this, in, current);
+                return _iceD_leaveChat(this, in, current);
             }
             case 16:
             {
-                return _iceD_sendMessage(this, in, current);
+                return _iceD_sendGroupMessage(this, in, current);
             }
             case 17:
             {
-                return _iceD_sendPrivateMessage(this, in, current);
+                return _iceD_sendMessage(this, in, current);
             }
             case 18:
             {
-                return _iceD_sendVoiceData(this, in, current);
+                return _iceD_sendPrivateMessage(this, in, current);
             }
             case 19:
+            {
+                return _iceD_sendVoiceData(this, in, current);
+            }
+            case 20:
             {
                 return _iceD_startVoiceCall(this, in, current);
             }

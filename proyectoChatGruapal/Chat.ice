@@ -90,6 +90,10 @@ module Chat {
         
         // Nuevo método para obtener estado de llamada
         string getActiveCall(string userId);
+
+        // AGREGAR ESTE MÉTODO:
+        string getCallAudio(string userId);
+
     }
 
 };

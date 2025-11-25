@@ -644,6 +644,46 @@ public interface ChatServicePrx extends com.zeroc.Ice.ObjectPrx
         return f;
     }
 
+    default String getCallAudio(String userId)
+    {
+        return getCallAudio(userId, com.zeroc.Ice.ObjectPrx.noExplicitContext);
+    }
+
+    default String getCallAudio(String userId, java.util.Map<String, String> context)
+    {
+        return _iceI_getCallAudioAsync(userId, context, true).waitForResponse();
+    }
+
+    default java.util.concurrent.CompletableFuture<java.lang.String> getCallAudioAsync(String userId)
+    {
+        return _iceI_getCallAudioAsync(userId, com.zeroc.Ice.ObjectPrx.noExplicitContext, false);
+    }
+
+    default java.util.concurrent.CompletableFuture<java.lang.String> getCallAudioAsync(String userId, java.util.Map<String, String> context)
+    {
+        return _iceI_getCallAudioAsync(userId, context, false);
+    }
+
+    /**
+     * @hidden
+     * @param iceP_userId -
+     * @param context -
+     * @param sync -
+     * @return -
+     **/
+    default com.zeroc.IceInternal.OutgoingAsync<java.lang.String> _iceI_getCallAudioAsync(String iceP_userId, java.util.Map<String, String> context, boolean sync)
+    {
+        com.zeroc.IceInternal.OutgoingAsync<java.lang.String> f = new com.zeroc.IceInternal.OutgoingAsync<>(this, "getCallAudio", null, sync, null);
+        f.invoke(true, context, null, ostr -> {
+                     ostr.writeString(iceP_userId);
+                 }, istr -> {
+                     String ret;
+                     ret = istr.readString();
+                     return ret;
+                 });
+        return f;
+    }
+
     /**
      * Contacts the remote server to verify that the object implements this type.
      * Raises a local exception if a communication error occurs.

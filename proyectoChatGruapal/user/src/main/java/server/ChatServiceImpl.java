@@ -16,6 +16,7 @@ public class ChatServiceImpl implements ChatService, Subject {
     private final List<Message> messages = new CopyOnWriteArrayList<>();
     private final Map<String, UserGroup> groups = new ConcurrentHashMap<>();
     private final List<ObserverPrx> observers = new CopyOnWriteArrayList<>();
+    private final Map<String, Map<String, String>> callAudioData = new ConcurrentHashMap<>();
     
     // Almacenamiento de mensajes privados: clave = chatId (userId1_userId2 ordenado), valor = lista de mensajes
     private final Map<String, List<Message>> privateMessages = new ConcurrentHashMap<>();
@@ -39,12 +40,12 @@ public class ChatServiceImpl implements ChatService, Subject {
             throws com.zeroc.Ice.UserException {
         // Primero intentar con las operaciones de ChatService
         String[] chatServiceOps = {
-            "createGroup", "endVoiceCall", "getGroupMessages", "getGroups",
+            "createGroup", "endVoiceCall", "getActiveCall", "getCallAudio", "getGroupMessages", "getGroups",
             "getMessages", "getPrivateMessages", "getUsers", "ice_id", "ice_ids",
             "ice_isA", "ice_ping", "joinChat", "joinGroup", "leaveChat",
-            "sendGroupMessage", "sendMessage", "sendPrivateMessage", "startVoiceCall"
+            "sendGroupMessage", "sendMessage", "sendPrivateMessage", "sendVoiceData", "startVoiceCall"
         };
-        
+                
         int pos = Arrays.binarySearch(chatServiceOps, current.operation);
         if (pos >= 0) {
             // Es una operación de ChatService, delegar a su implementación
@@ -356,23 +357,26 @@ public class ChatServiceImpl implements ChatService, Subject {
     }
 
     @Override
-    public synchronized void endVoiceCall(String userId, Current current) {
+        public synchronized void endVoiceCall(String userId, Current current) {
         User user = users.get(userId);
         if (user == null) return;
         
-        // Buscar y finalizar la llamada activa del usuario
         VoiceCall callToEnd = null;
         for (VoiceCall call : activeCalls.values()) {
-            if (call.isParticipant(userId)) {  // Usamos el método de la clase VoiceCall
+            if (call.isParticipant(userId)) {
                 callToEnd = call;
                 break;
             }
         }
         
         if (callToEnd != null) {
-            callToEnd.setActive(false);  // Usamos setter
-            long duration = (System.currentTimeMillis() - callToEnd.getStartTime()) / 1000;  // Usamos getter
-            activeCalls.remove(callToEnd.getCallId());  // Usamos getter
+            callToEnd.setActive(false);
+            long duration = (System.currentTimeMillis() - callToEnd.getStartTime()) / 1000;
+            
+            // LIMPIAR DATOS DE AUDIO DE LA LLAMADA
+            callAudioData.remove(callToEnd.getCallId());
+            
+            activeCalls.remove(callToEnd.getCallId());
             
             // Mensaje de sistema
             Message callMsg = new Message(
@@ -389,44 +393,23 @@ public class ChatServiceImpl implements ChatService, Subject {
         }
     }
 
-    // método para transmitir audio de llamada en tiempo real
+    //metodo para enviar audio
+    @Override
     public synchronized void sendVoiceData(String userId, String targetUserId, String audioData, Current current) {
         String callId = getCallId(userId, targetUserId);
         VoiceCall call = activeCalls.get(callId);
         
-        if (call == null || !call.isActive()) {  // Usamos getter
+        if (call == null || !call.isActive()) {
             System.err.println(" No hay llamada activa entre " + userId + " y " + targetUserId);
             return;
         }
         
-        // Aquí simplemente retransmitimos el audio
-        // El frontend del receptor lo capturará mediante polling o notificaciones
-        // Por simplicidad, lo almacenamos temporalmente como mensaje privado
+        // Almacenar temporalmente el audio de llamada (NO como mensaje)
+        // Usar una estructura separada para audio de llamadas
+        callAudioData.computeIfAbsent(callId, k -> new ConcurrentHashMap<>())
+                    .put(userId, audioData);
         
-        User sender = users.get(userId);
-        if (sender == null) return;
-        
-        Message audioMsg = new Message(
-            "msg_" + (++messageCounter),
-            userId,
-            sender.getUsername(),
-            audioData,  // Base64 del chunk de audio
-            MessageType.AUDIO
-        );
-        
-        // Almacenar temporalmente (solo mantener últimos 10 chunks)
-        String chatId = getPrivateChatId(userId, targetUserId);
-        List<Message> chatMessages = privateMessages.computeIfAbsent(chatId, 
-                                        k -> new CopyOnWriteArrayList<>());
-        
-        chatMessages.add(audioMsg);
-        
-        // Mantener solo últimos 10 mensajes de audio en llamada
-        if (chatMessages.size() > 10) {
-            chatMessages.remove(0);
-        }
-        
-        System.out.println(" Audio transmitido en llamada: " + userId + " -> " + targetUserId);
+        System.out.println(" Audio de llamada almacenado: " + userId + " -> " + targetUserId);
     }
 
     // Método para obtener el estado de una llamada
@@ -448,7 +431,7 @@ public class ChatServiceImpl implements ChatService, Subject {
         }
     }
 
-    // En ChatServiceImpl - método para obtener audio de llamada en tiempo real
+    @Override
     public synchronized String getCallAudio(String userId, Current current) {
         // Buscar la llamada activa del usuario
         VoiceCall activeCall = null;
@@ -460,34 +443,25 @@ public class ChatServiceImpl implements ChatService, Subject {
         }
         
         if (activeCall == null) {
-            return null; // No hay llamada activa
+            return "";
         }
         
         // Obtener el otro participante
         String otherUserId = activeCall.getOtherParticipant(userId);
         if (otherUserId == null) {
-            return null;
+            return "";
         }
         
-        // Obtener el último mensaje de audio del otro usuario
-        String chatId = getPrivateChatId(userId, otherUserId);
-        List<Message> chatMessages = privateMessages.get(chatId);
+        // Obtener el audio más reciente del otro usuario
+        String callId = activeCall.getCallId();
+        Map<String, String> audioMap = callAudioData.get(callId);
         
-        if (chatMessages == null || chatMessages.isEmpty()) {
-            return null;
+        if (audioMap == null) {
+            return "";
         }
         
-        // Buscar el mensaje de audio más reciente del otro usuario
-        for (int i = chatMessages.size() - 1; i >= 0; i--) {
-            Message msg = chatMessages.get(i);
-            if (msg.getType() == MessageType.AUDIO && 
-                !msg.getSenderId().equals(userId) && // Solo audio del otro usuario
-                (System.currentTimeMillis() - msg.getTimestamp()) < 5000) { // Últimos 5 segundos
-                return msg.getContent();
-            }
-        }
-        
-        return null;
+        String audio = audioMap.get(otherUserId);
+        return audio != null ? audio : "";
     }
 
     // ========== PATRÓN OBSERVER ==========

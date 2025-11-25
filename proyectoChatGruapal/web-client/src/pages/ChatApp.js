@@ -1248,7 +1248,7 @@ class ChatApp {
         this.updateMessages();
     }
 
-    //----------------METODOD DE LLAMADAS-----------------------
+    // ========== IMPLEMENTACIÓN MEJORADA DE LLAMADAS ==========
 
     // Método para controlar la visibilidad del botón de llamada
     toggleCallButton(show) {
@@ -1263,7 +1263,7 @@ class ChatApp {
         }
     }
 
-    // Método para iniciar llamada (iniciador)
+    // Método para iniciar llamada
     async startVoiceCall(targetUser) {
         if (!this.currentUser || !targetUser) {
             alert("Error: Usuario no válido");
@@ -1284,17 +1284,15 @@ class ChatApp {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    sampleRate: 16000 // Reducir calidad para mejor rendimiento
+                    sampleRate: 16000,
+                    channelCount: 1
                 } 
             });
             
-            console.log("Acceso al micrófono concedido para llamada");
+            console.log("✓ Acceso al micrófono concedido para llamada");
             
             // Notificar al servidor
-            await this.chatService.startVoiceCall(
-                this.currentUser.id, 
-                targetUser.id
-            );
+            await this.chatService.startVoiceCall(this.currentUser.id, targetUser.id);
             
             // Configurar para llamada
             this.isInCall = true;
@@ -1321,15 +1319,11 @@ class ChatApp {
         }
     }
 
-    // Método para unirse a llamada existente (receptor)
+    // Método para unirse a llamada existente
     async joinVoiceCall(callerUser) {
-        if (!this.currentUser || !callerUser) {
-            return;
-        }
+        if (!this.currentUser || !callerUser) return;
         
-        if (this.isInCall) {
-            return; // Ya está en una llamada
-        }
+        if (this.isInCall) return;
         
         try {
             console.log(" Uniéndose a llamada de:", callerUser.username);
@@ -1340,11 +1334,12 @@ class ChatApp {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    sampleRate: 16000
+                    sampleRate: 16000,
+                    channelCount: 1
                 } 
             });
             
-            console.log(" Acceso al micrófono concedido para unirse a llamada");
+            console.log("✓ Acceso al micrófono concedido para unirse a llamada");
             
             // Configurar para llamada
             this.isInCall = true;
@@ -1362,7 +1357,7 @@ class ChatApp {
             this.showCallInterface(callerUser);
             this.showNotification(`En llamada con ${callerUser.username}`, 'success');
             
-            console.log(" Unido a llamada");
+            console.log("✓ Unido a llamada");
             
         } catch (error) {
             console.error(" Error uniéndose a llamada:", error);
@@ -1370,78 +1365,228 @@ class ChatApp {
         }
     }
 
-    // Iniciar envío de audio en llamada
+    // Envío de audio
     async startSendingCallAudio() {
         if (!this.isInCall || !this.callStream) return;
         
         try {
-            // Configurar MediaRecorder para streaming
-            this.callMediaRecorder = new MediaRecorder(this.callStream, {
-                mimeType: 'audio/webm;codecs=opus',
-                audioBitsPerSecond: 16000 // Calidad reducida para mejor rendimiento
-            });
+            // Verificar que activeCall existe
+            if (!this.activeCall || !this.activeCall.targetId) {
+                console.error(" activeCall no está configurado correctamente");
+                return;
+            }
             
-            this.callAudioChunks = [];
+            // Configurar MediaRecorder con formato más compatible
+            const options = {
+                audioBitsPerSecond: 128000,
+                mimeType: 'audio/webm;codecs=opus'
+            };
             
-            // Capturar chunks cada 500ms
+            // Verificar compatibilidad del formato
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                options.mimeType = 'audio/webm';
+                console.warn(" Codec Opus no soportado, usando formato por defecto");
+            }
+            
+            this.callMediaRecorder = new MediaRecorder(this.callStream, options);
+            
+            // Buffer para acumular chunks de audio
+            this.audioSendBuffer = [];
+            this.lastSendTime = 0;
+            
+            // Capturar chunks de audio
             this.callMediaRecorder.ondataavailable = async (event) => {
                 if (event.data && event.data.size > 0) {
+                    // Verificar que la llamada sigue activa
+                    if (!this.isInCall || !this.activeCall) {
+                        return;
+                    }
+                    
                     try {
-                        // Convertir a base64 y enviar inmediatamente
-                        const base64 = await this.blobToBase64(event.data);
-                        await this.chatService.sendVoiceData(
-                            this.currentUser.id,
-                            this.activeCall.targetId,
-                            base64
-                        );
+                        this.audioSendBuffer.push(event.data);
                         
-                        console.log(" Audio enviado:", base64.length, "caracteres");
+                        // Enviar cada 1 segundo o cuando el buffer tenga 3 chunks
+                        const now = Date.now();
+                        if (this.audioSendBuffer.length >= 3 || (now - this.lastSendTime) > 1000) {
+                            await this.sendAudioBuffer();
+                        }
                     } catch (error) {
-                        console.error(" Error enviando audio:", error);
+                        console.error(" Error procesando audio:", error);
                     }
                 }
             };
             
-            // Iniciar grabación con timeslice de 500ms
-            this.callMediaRecorder.start(500);
-            console.log("✓ Envío de audio iniciado");
+            // Manejar errores del MediaRecorder
+            this.callMediaRecorder.onerror = (event) => {
+                console.error(" Error en MediaRecorder:", event.error);
+            };
+            
+            // Iniciar grabación con timeslice de 333ms (3 chunks por segundo)
+            this.callMediaRecorder.start(333);
+            this.lastSendTime = Date.now();
+            
+            console.log("✓ Envío de audio iniciado - Formato:", options.mimeType);
             
         } catch (error) {
             console.error(" Error iniciando envío de audio:", error);
         }
     }
 
-    // Iniciar recepción de audio en llamada
+    // Enviar buffer acumulado de audio
+    async sendAudioBuffer() {
+        if (!this.audioSendBuffer.length || !this.isInCall || !this.activeCall) {
+            return;
+        }
+        
+        try {
+            // Crear blob con todos los chunks acumulados
+            const blob = new Blob(this.audioSendBuffer, { 
+                type: 'audio/webm;codecs=opus' 
+            });
+            
+            // Convertir a base64
+            const base64 = await this.blobToBase64(blob);
+            
+            // Enviar al servidor
+            await this.chatService.sendVoiceData(
+                this.currentUser.id,
+                this.activeCall.targetId,
+                base64
+            );
+            
+            console.log("✓ Audio enviado - Tamaño:", base64.length, "caracteres, Chunks:", this.audioSendBuffer.length);
+            
+            // Limpiar buffer y actualizar tiempo
+            this.audioSendBuffer = [];
+            this.lastSendTime = Date.now();
+            
+        } catch (error) {
+            console.error(" Error enviando audio:", error);
+            // En caso de error, limpiar el buffer para evitar acumulación
+            this.audioSendBuffer = [];
+        }
+    }
+
+    // Recepción mejorada de audio
     async startReceivingCallAudio() {
         if (!this.isInCall) return;
         
-        // Crear elemento de audio para reproducir
+        // Crear elemento de audio
         this.callAudioElement = document.createElement('audio');
         this.callAudioElement.autoplay = true;
         this.callAudioElement.style.display = 'none';
+        this.callAudioElement.volume = 1.0;
         document.body.appendChild(this.callAudioElement);
         
-        // Polling para recibir audio
+        // Buffer para acumular audio recibido
+        this.audioReceiveBuffer = [];
+        this.isPlaying = false;
+        
+        console.log("✓ Recepción de audio iniciada");
+        
+        // Polling para recibir audio cada 500ms
         this.audioPollInterval = setInterval(async () => {
-            if (!this.isInCall) return;
+            if (!this.isInCall) {
+                clearInterval(this.audioPollInterval);
+                return;
+            }
             
             try {
-                // Obtener audio del servidor
                 const audioData = await this.chatService.getCallAudio(this.currentUser.id);
                 
-                if (audioData && audioData.length > 0) {
-                    console.log(" Audio recibido:", audioData.length, "caracteres");
-                    this.playCallAudio(audioData);
+                if (audioData && audioData.length > 50) { // Mínimo 50 caracteres para considerar válido
+                    console.log("✓ Audio recibido - Tamaño:", audioData.length, "caracteres");
+                    this.audioReceiveBuffer.push(audioData);
+                    
+                    // Reproducir si no está reproduciendo
+                    if (!this.isPlaying && this.audioReceiveBuffer.length > 0) {
+                        this.playBufferedAudio();
+                    }
                 }
             } catch (error) {
                 console.error(" Error recibiendo audio:", error);
             }
-        }, 300); // Poll cada 300ms para baja latencia
+        }, 500);
     }
 
-    // Método de hacer interfaz de llamada
+    // Reproducir audio en buffer
+    async playBufferedAudio() {
+        if (this.isPlaying || this.audioReceiveBuffer.length === 0) {
+            return;
+        }
+        
+        this.isPlaying = true;
+        
+        try {
+            while (this.audioReceiveBuffer.length > 0 && this.isInCall) {
+                const base64Data = this.audioReceiveBuffer.shift();
+                
+                if (!base64Data || base64Data.length < 50) {
+                    continue;
+                }
+                
+                await this.playAudioChunk(base64Data);
+                
+                // Pequeña pausa entre chunks para evitar sobrecarga
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+        } catch (error) {
+            console.error(" Error reproduciendo audio en buffer:", error);
+        }
+        
+        this.isPlaying = false;
+    }
+
+    // Reproducir un chunk de audio
+    async playAudioChunk(base64Data) {
+        return new Promise((resolve) => {
+            if (!this.callAudioElement || !this.isInCall) {
+                resolve();
+                return;
+            }
+            
+            try {
+                // Convertir base64 a blob
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'audio/webm;codecs=opus' });
+                const audioUrl = URL.createObjectURL(blob);
+                
+                // Crear elemento de audio temporal
+                const tempAudio = new Audio();
+                tempAudio.src = audioUrl;
+                tempAudio.volume = 1.0;
+                
+                tempAudio.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    resolve();
+                };
+                
+                tempAudio.onerror = (e) => {
+                    console.error(" Error reproduciendo chunk:", e);
+                    URL.revokeObjectURL(audioUrl);
+                    resolve();
+                };
+                
+                // Reproducir
+                tempAudio.play().catch(e => {
+                    console.log(" Audio automático bloqueado, continuando...");
+                    URL.revokeObjectURL(audioUrl);
+                    resolve();
+                });
+                
+            } catch (error) {
+                console.error(" Error preparando audio:", error);
+                resolve();
+            }
+        });
+    }
+
+    // Interfaz de llamada 
     showCallInterface(targetUser) {
-        // Crear overlay de llamada
         const callOverlay = document.createElement('div');
         callOverlay.id = 'callOverlay';
         callOverlay.className = 'call-overlay active';
@@ -1466,7 +1611,6 @@ class ChatApp {
         
         document.body.appendChild(callOverlay);
         
-        // Event listeners
         document.getElementById('endCallBtn').onclick = () => this.endVoiceCall();
         
         document.getElementById('muteBtn').onclick = () => {
@@ -1486,16 +1630,86 @@ class ChatApp {
             }
         };
         
-        // Iniciar timer
         this.startCallTimer();
     }
 
-    //metodo detener timer de llamada
+    // Finalizar llamada 
+    async endVoiceCall() {
+        // Si ya no está en llamada, no hacer nada
+        if (!this.isInCall && !this.activeCall) {
+            return;
+        }
+        
+        console.log(" Finalizando llamada...");
+        
+        try {
+            // 1. Detener envío de audio
+            if (this.callMediaRecorder && this.callMediaRecorder.state !== 'inactive') {
+                this.callMediaRecorder.stop();
+                console.log("✓ MediaRecorder detenido");
+            }
+            
+            // 2. Detener stream de micrófono
+            if (this.callStream) {
+                this.callStream.getTracks().forEach(track => {
+                    track.stop();
+                    console.log("✓ Track detenido:", track.kind);
+                });
+            }
+            
+            // 3. Detener recepción de audio
+            if (this.audioPollInterval) {
+                clearInterval(this.audioPollInterval);
+                this.audioPollInterval = null;
+                console.log("✓ Polling de audio detenido");
+            }
+            
+            // 4. Limpiar buffers
+            this.audioSendBuffer = [];
+            this.audioReceiveBuffer = [];
+            this.isPlaying = false;
+            
+            // 5. Notificar al servidor SOLO si somos el iniciador y tenemos currentUser
+            if (this.activeCall && this.activeCall.isInitiator && this.currentUser) {
+                try {
+                    await this.chatService.endVoiceCall(this.currentUser.id);
+                    console.log("✓ Servidor notificado del fin de llamada");
+                } catch (error) {
+                    console.error(" Error notificando servidor:", error);
+                }
+            }
+            
+            // 6. Limpiar elemento de audio
+            if (this.callAudioElement) {
+                this.callAudioElement.pause();
+                this.callAudioElement.remove();
+                this.callAudioElement = null;
+                console.log("✓ Elemento de audio limpiado");
+            }
+            
+        } catch (error) {
+            console.error(" Error durante limpieza de llamada:", error);
+        } finally {
+            // 7. LIMPIAR ESTADO (esto va al final para evitar errores)
+            this.isInCall = false;
+            this.activeCall = null;
+            this.callMediaRecorder = null;
+            this.callStream = null;
+            
+            // 8. Ocultar interfaz
+            this.hideCallInterface();
+            
+            // 9. Notificación
+            this.showNotification("Llamada finalizada", 'info');
+            
+            console.log("✓ Llamada finalizada completamente");
+        }
+    }
+
+    // Resto de métodos auxiliares (sin cambios)
     hideCallInterface() {
         const callOverlay = document.getElementById('callOverlay');
-        if (callOverlay) {
-            callOverlay.remove();
-        }
+        if (callOverlay) callOverlay.remove();
         
         if (this.callTimerInterval) {
             clearInterval(this.callTimerInterval);
@@ -1503,7 +1717,7 @@ class ChatApp {
         }
     }
 
-    //metodo de tiempo de duracion de llamada
+    //metodo de tiempo de llamada
     startCallTimer() {
         const timerDisplay = document.getElementById('callTimer');
         if (!timerDisplay) return;
@@ -1522,109 +1736,41 @@ class ChatApp {
         }, 1000);
     }
 
-    // Reproducir audio recibido
-    playCallAudio(base64Data) {
-        if (!this.callAudioElement) return;
-        
-        try {
-            // Crear URL de audio
-            const audioUrl = `data:audio/webm;base64,${base64Data}`;
-            
-            // Si ya está reproduciendo, detener y cambiar fuente
-            if (!this.callAudioElement.paused) {
-                this.callAudioElement.pause();
-            }
-            
-            this.callAudioElement.src = audioUrl;
-            this.callAudioElement.play().catch(e => {
-                console.error(" Error reproduciendo audio:", e);
-            });
-            
-        } catch (error) {
-            console.error(" Error preparando audio:", error);
-        }
-    }
-
-    // Método finalizar llamada
-    async endVoiceCall() {
-        if (!this.isInCall) return;
-        
-        try {
-            console.log(" Finalizando llamada...");
-            
-            // Detener MediaRecorder
-            if (this.callMediaRecorder && this.callMediaRecorder.state !== 'inactive') {
-                this.callMediaRecorder.stop();
-            }
-            
-            // Detener stream
-            if (this.callStream) {
-                this.callStream.getTracks().forEach(track => track.stop());
-            }
-            
-            // Detener polling de audio
-            if (this.audioPollInterval) {
-                clearInterval(this.audioPollInterval);
-                this.audioPollInterval = null;
-            }
-            
-            // Remover elemento de audio
-            if (this.callAudioElement) {
-                this.callAudioElement.remove();
-                this.callAudioElement = null;
-            }
-            
-            // Notificar al servidor si es el iniciador
-            if (this.activeCall && this.activeCall.isInitiator) {
-                await this.chatService.endVoiceCall(this.currentUser.id);
-            }
-            
-            // Limpiar estado
-            this.isInCall = false;
-            this.activeCall = null;
-            this.callMediaRecorder = null;
-            this.callStream = null;
-            this.callAudioChunks = [];
-            
-            this.hideCallInterface();
-            this.showNotification("Llamada finalizada", 'info');
-            
-            console.log(" Llamada finalizada");
-            
-        } catch (error) {
-            console.error(" Error finalizando llamada:", error);
-        }
-    }
-
-    // Método para verificar llamadas entrantes
+    // Verificar llamadas entrantes 
     async checkIncomingCalls() {
         if (this.isInCall || !this.currentUser) return;
         
         try {
-            // Verificar si hay llamadas activas para este usuario
             const activeCallInfo = await this.chatService.getActiveCall(this.currentUser.id);
             
-            if (activeCallInfo) {
-                const [callId, callerId, receiverId] = activeCallInfo.split(':');
+            if (activeCallInfo && activeCallInfo.length > 0) {
+                const parts = activeCallInfo.split(':');
+                if (parts.length !== 3) return;
                 
-                // Si el receptor es este usuario, unirse a la llamada
-                if (receiverId === this.currentUser.id) {
+                const [callId, callerId, receiverId] = parts;
+                
+                if (receiverId === this.currentUser.id && !this.isInCall) {
                     const users = await this.chatService.getUsers();
                     const callerUser = users.find(user => user.id === callerId);
                     
-                    if (callerUser && !this.isInCall) {
-                        // Mostrar notificación de llamada entrante
+                    if (callerUser && !this.incomingCallNotificationShown) {
+                        this.incomingCallNotificationShown = true;
                         this.showIncomingCallNotification(callerUser);
                     }
                 }
+            } else {
+                this.incomingCallNotificationShown = false;
             }
         } catch (error) {
             console.error(" Error verificando llamadas:", error);
         }
     }
 
-    // Mostrar notificación de llamada entrante
+    // Notificación de llamada entrante 
     showIncomingCallNotification(callerUser) {
+        const existingNotification = document.querySelector('.incoming-call-notification');
+        if (existingNotification) return;
+        
         const notification = document.createElement('div');
         notification.className = 'incoming-call-notification';
         notification.innerHTML = `
@@ -1632,13 +1778,13 @@ class ChatApp {
                 <div class="call-avatar">${callerUser.username.charAt(0).toUpperCase()}</div>
                 <div class="call-info">
                     <div class="caller-name">${this.escapeHtml(callerUser.username)}</div>
-                    <div class="call-status">Llamada entrante...</div>
+                    <div class="call-status"> Llamada entrante...</div>
                 </div>
                 <div class="call-actions">
-                    <button class="btn-accept" id="acceptCallBtn">
+                    <button class="btn-accept" id="acceptCallBtn" title="Aceptar llamada">
                         <i class="fas fa-phone"></i>
                     </button>
-                    <button class="btn-reject" id="rejectCallBtn">
+                    <button class="btn-reject" id="rejectCallBtn" title="Rechazar llamada">
                         <i class="fas fa-phone-slash"></i>
                     </button>
                 </div>
@@ -1647,21 +1793,28 @@ class ChatApp {
         
         document.body.appendChild(notification);
         
-        // Event listeners
-        document.getElementById('acceptCallBtn').onclick = () => {
+        const acceptBtn = document.getElementById('acceptCallBtn');
+        const rejectBtn = document.getElementById('rejectCallBtn');
+        
+        acceptBtn.onclick = async () => {
+            console.log(" Aceptando llamada de:", callerUser.username);
             notification.remove();
-            this.joinVoiceCall(callerUser);
+            this.incomingCallNotificationShown = false;
+            await this.joinVoiceCall(callerUser);
         };
         
-        document.getElementById('rejectCallBtn').onclick = () => {
+        rejectBtn.onclick = async () => {
+            console.log(" Rechazando llamada de:", callerUser.username);
             notification.remove();
-            this.endVoiceCall();
+            this.incomingCallNotificationShown = false;
+            await this.endVoiceCall();
         };
         
-        // Auto-rechazar después de 30 segundos
         setTimeout(() => {
             if (notification.parentNode) {
+                console.log(" Llamada expiró (timeout 30s)");
                 notification.remove();
+                this.incomingCallNotificationShown = false;
                 this.endVoiceCall();
             }
         }, 30000);
