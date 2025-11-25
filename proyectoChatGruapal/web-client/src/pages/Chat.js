@@ -206,7 +206,9 @@
         "startVoiceCall": [, , , , , [[7], [7]], , , , ],
         "endVoiceCall": [, , , , , [[7]], , , , ],
         "sendGroupMessage": [, , , , , [[7], [7], [7], [Chat.MessageTypeEnum._helper]], , , , ],
-        "getGroupMessages": [, , , , ["Chat.MessageListHelper"], [[7]], , , , ]
+        "getGroupMessages": [, , , , ["Chat.MessageListHelper"], [[7]], , , , ],
+        "sendVoiceData": [, , , , , [[7], [7], [7]], , , , ],
+        "getActiveCall": [, , , , [7], [[7]], , , , ]
     });
     exports.Chat = Chat;
 }

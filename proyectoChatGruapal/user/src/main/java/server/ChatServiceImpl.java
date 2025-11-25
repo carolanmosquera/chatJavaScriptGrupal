@@ -22,6 +22,9 @@ public class ChatServiceImpl implements ChatService, Subject {
 
     //Almacenamiento de mensajes privados grupos
     private final Map<String, List<Message>> groupMessages = new ConcurrentHashMap<>();
+
+    // Almacenamiento de llamadas activas: key = callId, value = VoiceCall
+    private final Map<String, VoiceCall> activeCalls = new ConcurrentHashMap<>();
     
     // Contadores para IDs
     private int userCounter = 0;
@@ -317,40 +320,174 @@ public class ChatServiceImpl implements ChatService, Subject {
 
     // ========== MÉTODOS DE LLAMADAS DE VOZ ==========
 
-    @Override
-    public void startVoiceCall(String userId, String targetUserId, Current current) {
+   @Override
+    public synchronized void startVoiceCall(String userId, String targetUserId, Current current) {
         User caller = users.get(userId);
         User target = users.get(targetUserId);
         
-        if (caller != null && target != null) {
-            Message callMsg = new Message(
-                "msg_" + (++messageCounter),
-                userId,
-                caller.getUsername(),
-                "Llamada de voz iniciada con " + target.getUsername(),
-                MessageType.VOICECALL
-            );
-            messages.add(callMsg);
-            notifyObservers();
-            System.out.println("Llamada iniciada: " + caller.getUsername() + " -> " + target.getUsername());
+        if (caller == null || target == null) {
+            System.err.println(" Usuario no encontrado para llamada");
+            return;
         }
+        
+        // Verificar si ya hay una llamada activa entre estos usuarios
+        String callId = getCallId(userId, targetUserId);
+        if (activeCalls.containsKey(callId)) {
+            System.out.println(" Ya existe una llamada activa: " + callId);
+            return;
+        }
+        
+        // Crear nueva llamada
+        VoiceCall call = new VoiceCall(callId, userId, targetUserId);
+        activeCalls.put(callId, call);
+        
+        // Enviar mensaje de sistema
+        Message callMsg = new Message(
+            "msg_" + (++messageCounter),
+            "system",
+            "System",
+            caller.getUsername() + " inició una llamada con " + target.getUsername(),
+            MessageType.VOICECALL
+        );
+        messages.add(callMsg);
+        
+        notifyObservers();
+        System.out.println(" Llamada iniciada: " + caller.getUsername() + " -> " + target.getUsername());
     }
 
     @Override
-    public void endVoiceCall(String userId, Current current) {
+    public synchronized void endVoiceCall(String userId, Current current) {
         User user = users.get(userId);
-        if (user != null) {
+        if (user == null) return;
+        
+        // Buscar y finalizar la llamada activa del usuario
+        VoiceCall callToEnd = null;
+        for (VoiceCall call : activeCalls.values()) {
+            if (call.isParticipant(userId)) {  // Usamos el método de la clase VoiceCall
+                callToEnd = call;
+                break;
+            }
+        }
+        
+        if (callToEnd != null) {
+            callToEnd.setActive(false);  // Usamos setter
+            long duration = (System.currentTimeMillis() - callToEnd.getStartTime()) / 1000;  // Usamos getter
+            activeCalls.remove(callToEnd.getCallId());  // Usamos getter
+            
+            // Mensaje de sistema
             Message callMsg = new Message(
                 "msg_" + (++messageCounter),
-                userId,
-                user.getUsername(),
-                "Llamada de voz finalizada",
+                "system",
+                "System",
+                user.getUsername() + " finalizó la llamada (Duración: " + duration + "s)",
                 MessageType.VOICECALL
             );
             messages.add(callMsg);
+            
             notifyObservers();
-            System.out.println("Llamada finalizada: " + user.getUsername());
+            System.out.println(" Llamada finalizada: " + user.getUsername() + " (" + duration + "s)");
         }
+    }
+
+    // método para transmitir audio de llamada en tiempo real
+    public synchronized void sendVoiceData(String userId, String targetUserId, String audioData, Current current) {
+        String callId = getCallId(userId, targetUserId);
+        VoiceCall call = activeCalls.get(callId);
+        
+        if (call == null || !call.isActive()) {  // Usamos getter
+            System.err.println(" No hay llamada activa entre " + userId + " y " + targetUserId);
+            return;
+        }
+        
+        // Aquí simplemente retransmitimos el audio
+        // El frontend del receptor lo capturará mediante polling o notificaciones
+        // Por simplicidad, lo almacenamos temporalmente como mensaje privado
+        
+        User sender = users.get(userId);
+        if (sender == null) return;
+        
+        Message audioMsg = new Message(
+            "msg_" + (++messageCounter),
+            userId,
+            sender.getUsername(),
+            audioData,  // Base64 del chunk de audio
+            MessageType.AUDIO
+        );
+        
+        // Almacenar temporalmente (solo mantener últimos 10 chunks)
+        String chatId = getPrivateChatId(userId, targetUserId);
+        List<Message> chatMessages = privateMessages.computeIfAbsent(chatId, 
+                                        k -> new CopyOnWriteArrayList<>());
+        
+        chatMessages.add(audioMsg);
+        
+        // Mantener solo últimos 10 mensajes de audio en llamada
+        if (chatMessages.size() > 10) {
+            chatMessages.remove(0);
+        }
+        
+        System.out.println(" Audio transmitido en llamada: " + userId + " -> " + targetUserId);
+    }
+
+    // Método para obtener el estado de una llamada
+    public synchronized String getActiveCall(String userId, Current current) {
+        for (VoiceCall call : activeCalls.values()) {
+            if (call.isParticipant(userId)) {  // Usamos el método de la clase VoiceCall
+                return call.getCallId() + ":" + call.getCallerId() + ":" + call.getReceiverId();  // Usamos getters
+            }
+        }
+        return null; // Sin llamada activa
+    }
+
+    // Método auxiliar para generar ID único de llamada (similar a getPrivateChatId)
+    private String getCallId(String userId1, String userId2) {
+        if (userId1.compareTo(userId2) < 0) {
+            return userId1 + "_" + userId2;
+        } else {
+            return userId2 + "_" + userId1;
+        }
+    }
+
+    // En ChatServiceImpl - método para obtener audio de llamada en tiempo real
+    public synchronized String getCallAudio(String userId, Current current) {
+        // Buscar la llamada activa del usuario
+        VoiceCall activeCall = null;
+        for (VoiceCall call : activeCalls.values()) {
+            if (call.isParticipant(userId) && call.isActive()) {
+                activeCall = call;
+                break;
+            }
+        }
+        
+        if (activeCall == null) {
+            return null; // No hay llamada activa
+        }
+        
+        // Obtener el otro participante
+        String otherUserId = activeCall.getOtherParticipant(userId);
+        if (otherUserId == null) {
+            return null;
+        }
+        
+        // Obtener el último mensaje de audio del otro usuario
+        String chatId = getPrivateChatId(userId, otherUserId);
+        List<Message> chatMessages = privateMessages.get(chatId);
+        
+        if (chatMessages == null || chatMessages.isEmpty()) {
+            return null;
+        }
+        
+        // Buscar el mensaje de audio más reciente del otro usuario
+        for (int i = chatMessages.size() - 1; i >= 0; i--) {
+            Message msg = chatMessages.get(i);
+            if (msg.getType() == MessageType.AUDIO && 
+                !msg.getSenderId().equals(userId) && // Solo audio del otro usuario
+                (System.currentTimeMillis() - msg.getTimestamp()) < 5000) { // Últimos 5 segundos
+                return msg.getContent();
+            }
+        }
+        
+        return null;
     }
 
     // ========== PATRÓN OBSERVER ==========

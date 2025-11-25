@@ -564,6 +564,86 @@ public interface ChatServicePrx extends com.zeroc.Ice.ObjectPrx
         return f;
     }
 
+    default void sendVoiceData(String userId, String targetUserId, String audioData)
+    {
+        sendVoiceData(userId, targetUserId, audioData, com.zeroc.Ice.ObjectPrx.noExplicitContext);
+    }
+
+    default void sendVoiceData(String userId, String targetUserId, String audioData, java.util.Map<String, String> context)
+    {
+        _iceI_sendVoiceDataAsync(userId, targetUserId, audioData, context, true).waitForResponse();
+    }
+
+    default java.util.concurrent.CompletableFuture<Void> sendVoiceDataAsync(String userId, String targetUserId, String audioData)
+    {
+        return _iceI_sendVoiceDataAsync(userId, targetUserId, audioData, com.zeroc.Ice.ObjectPrx.noExplicitContext, false);
+    }
+
+    default java.util.concurrent.CompletableFuture<Void> sendVoiceDataAsync(String userId, String targetUserId, String audioData, java.util.Map<String, String> context)
+    {
+        return _iceI_sendVoiceDataAsync(userId, targetUserId, audioData, context, false);
+    }
+
+    /**
+     * @hidden
+     * @param iceP_userId -
+     * @param iceP_targetUserId -
+     * @param iceP_audioData -
+     * @param context -
+     * @param sync -
+     * @return -
+     **/
+    default com.zeroc.IceInternal.OutgoingAsync<Void> _iceI_sendVoiceDataAsync(String iceP_userId, String iceP_targetUserId, String iceP_audioData, java.util.Map<String, String> context, boolean sync)
+    {
+        com.zeroc.IceInternal.OutgoingAsync<Void> f = new com.zeroc.IceInternal.OutgoingAsync<>(this, "sendVoiceData", null, sync, null);
+        f.invoke(false, context, null, ostr -> {
+                     ostr.writeString(iceP_userId);
+                     ostr.writeString(iceP_targetUserId);
+                     ostr.writeString(iceP_audioData);
+                 }, null);
+        return f;
+    }
+
+    default String getActiveCall(String userId)
+    {
+        return getActiveCall(userId, com.zeroc.Ice.ObjectPrx.noExplicitContext);
+    }
+
+    default String getActiveCall(String userId, java.util.Map<String, String> context)
+    {
+        return _iceI_getActiveCallAsync(userId, context, true).waitForResponse();
+    }
+
+    default java.util.concurrent.CompletableFuture<java.lang.String> getActiveCallAsync(String userId)
+    {
+        return _iceI_getActiveCallAsync(userId, com.zeroc.Ice.ObjectPrx.noExplicitContext, false);
+    }
+
+    default java.util.concurrent.CompletableFuture<java.lang.String> getActiveCallAsync(String userId, java.util.Map<String, String> context)
+    {
+        return _iceI_getActiveCallAsync(userId, context, false);
+    }
+
+    /**
+     * @hidden
+     * @param iceP_userId -
+     * @param context -
+     * @param sync -
+     * @return -
+     **/
+    default com.zeroc.IceInternal.OutgoingAsync<java.lang.String> _iceI_getActiveCallAsync(String iceP_userId, java.util.Map<String, String> context, boolean sync)
+    {
+        com.zeroc.IceInternal.OutgoingAsync<java.lang.String> f = new com.zeroc.IceInternal.OutgoingAsync<>(this, "getActiveCall", null, sync, null);
+        f.invoke(true, context, null, ostr -> {
+                     ostr.writeString(iceP_userId);
+                 }, istr -> {
+                     String ret;
+                     ret = istr.readString();
+                     return ret;
+                 });
+        return f;
+    }
+
     /**
      * Contacts the remote server to verify that the object implements this type.
      * Raises a local exception if a communication error occurs.

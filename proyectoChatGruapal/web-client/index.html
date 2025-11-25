@@ -53,7 +53,9 @@
                     </div>
                 </div>
                 <div class="chat-actions">
-                    <button class="icon-btn" title="Voice Call"><i class="fas fa-phone"></i></button>
+                    <button class="icon-btn" id="voiceCallBtn" title="Voice Call" style="display: none;">
+                        <i class="fas fa-phone"></i>
+                    </button>
                 </div>
             </header>
 
@@ -225,7 +227,9 @@
                     console.error("Error creando grupo:", error);
                     alert("Error al crear el grupo");
                 }
+                
             });
+
         });
 
         function renderUserSelectList(users) {

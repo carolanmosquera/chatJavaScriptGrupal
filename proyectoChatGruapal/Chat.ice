@@ -84,6 +84,12 @@ module Chat {
         // Private Mesage Groups
         void sendGroupMessage(string groupId, string userId, string content, MessageTypeEnum type);
         MessageList getGroupMessages(string groupId);
+
+        // Nuevo método para transmisión de audio en llamadas
+        void sendVoiceData(string userId, string targetUserId, string audioData);
+        
+        // Nuevo método para obtener estado de llamada
+        string getActiveCall(string userId);
     }
 
 };

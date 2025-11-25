@@ -31,6 +31,14 @@ class ChatApp {
         this.recordingStartTime = null;
         this.recordingTimerInterval = null;
 
+        // Variables de llamada
+        this.activeCall = null;
+        this.callStream = null;
+        this.callMediaRecorder = null;
+        this.isInCall = false;
+        this.callAudioChunks = [];
+        this.callSendInterval = null;
+
         // Referencias DOM
         this.messagesContainer = document.getElementById('messages');
         this.contactsList = document.getElementById('contacts');
@@ -58,6 +66,23 @@ class ChatApp {
         this.messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.sendMessage();
         });
+
+        // ========== AGREGAR BOTÓN DE LLAMADA AQUÍ ==========
+        const voiceCallBtn = document.getElementById('voiceCallBtn');
+        if (voiceCallBtn) {
+            // Remover listener previo si existe
+            const newVoiceCallBtn = voiceCallBtn.cloneNode(true);
+            voiceCallBtn.parentNode.replaceChild(newVoiceCallBtn, voiceCallBtn);
+            newVoiceCallBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.selectedContact) {
+                    this.startVoiceCall(this.selectedContact);
+                } else {
+                    alert("Selecciona un contacto para iniciar una llamada");
+                }
+            });
+        }
 
         // Botón de micrófono para grabar audio - usar delegación de eventos para mayor robustez
         const micBtn = document.querySelector('.mic-btn');
@@ -224,6 +249,7 @@ class ChatApp {
             await this.updateUsers();
             //actualiza grupos
             await this.updateGroups();
+            await this.checkIncomingCalls();
         }, 1000);
 
         // Primera actualización inmediata
@@ -233,6 +259,7 @@ class ChatApp {
 
     }
 
+    //actualiza mensaje
     async updateMessages() {
         try {
             let messages;
@@ -270,6 +297,7 @@ class ChatApp {
         }
     }
 
+    //actualiza usuario
     async updateUsers() {
         try {
             const users = await this.chatService.getUsers();
@@ -278,6 +306,48 @@ class ChatApp {
             console.error("Error obteniendo usuarios:", error);
         }
     }
+
+    //metodo de renderizar usuarios
+    renderContacts(users) {
+        this.contactsList.innerHTML = '';
+
+        const onlineUsers = users.filter(user =>
+            user.id !== this.currentUser.id && user.isOnline
+        );
+
+        if (onlineUsers.length === 0) {
+            this.contactsList.innerHTML = `
+                <div class="contact" style="justify-content: center; padding: 20px;">
+                    <span style="color: var(--text-muted);">No hay otros usuarios conectados</span>
+                </div>
+            `;
+            return;
+        }
+
+        onlineUsers.forEach(user => {
+            const contactDiv = document.createElement('div');
+            contactDiv.className = 'contact';
+            contactDiv.onclick = () => this.selectContact(user);
+
+            const initial = user.username.charAt(0).toUpperCase();
+            const statusClass = user.isOnline ? 'online' : 'offline';
+
+            contactDiv.innerHTML = `
+                <div class="avatar">${initial}</div>
+                <div class="contact-info">
+                    <div class="contact-name">${user.username}</div>
+                    <div class="contact-preview ${statusClass}">
+                        ${user.isOnline ? '● En línea' : '○ Desconectado'}
+                    </div>
+                </div>
+            `;
+
+            this.contactsList.appendChild(contactDiv);
+        });
+    }
+
+    //--------METODOS GRUPOS------------
+
     //metodo para actualizar grupos 
     async updateGroups() {
         try {
@@ -449,6 +519,9 @@ class ChatApp {
         this.selectedGroup = group;
         this.selectedContact = null;
 
+        // Ocultar botón de llamada cuando se selecciona un grupo
+        this.toggleCallButton(false);
+
         const memberCount = group.memberIds ? group.memberIds.length : 0;
         this.updateChatHeader(
             group.name,
@@ -495,43 +568,7 @@ class ChatApp {
         return document.getElementById('groupsList');
     }
 
-    renderContacts(users) {
-        this.contactsList.innerHTML = '';
-
-        const onlineUsers = users.filter(user =>
-            user.id !== this.currentUser.id && user.isOnline
-        );
-
-        if (onlineUsers.length === 0) {
-            this.contactsList.innerHTML = `
-                <div class="contact" style="justify-content: center; padding: 20px;">
-                    <span style="color: var(--text-muted);">No hay otros usuarios conectados</span>
-                </div>
-            `;
-            return;
-        }
-
-        onlineUsers.forEach(user => {
-            const contactDiv = document.createElement('div');
-            contactDiv.className = 'contact';
-            contactDiv.onclick = () => this.selectContact(user);
-
-            const initial = user.username.charAt(0).toUpperCase();
-            const statusClass = user.isOnline ? 'online' : 'offline';
-
-            contactDiv.innerHTML = `
-                <div class="avatar">${initial}</div>
-                <div class="contact-info">
-                    <div class="contact-name">${user.username}</div>
-                    <div class="contact-preview ${statusClass}">
-                        ${user.isOnline ? '● En línea' : '○ Desconectado'}
-                    </div>
-                </div>
-            `;
-
-            this.contactsList.appendChild(contactDiv);
-        });
-    }
+    //---------------METODO DE MESNAJE-------------
 
     renderMessages(messages) {
         const placeholder = this.messagesContainer.querySelector('.messages-placeholder');
@@ -799,7 +836,7 @@ class ChatApp {
     }
 
 
-    // ========== FUNCIONALIDAD DE AUDIO - IMPLEMENTACIÓN SIMPLE ==========
+    // ========== FUNCIONALIDAD DE AUDIO ==========
     
     handleMicClick() {
         if (!this.isRecording) {
@@ -1189,7 +1226,12 @@ class ChatApp {
     selectContact(user) {
         this.selectedContact = user;
         this.selectedGroup = null; // ← Deseleccionar grupo
+
+        // Actualizar header
         this.updateChatHeader(user.username, user.isOnline ? 'En línea' : 'Desconectado');
+
+        // Mostrar botón de llamada existente (no crear uno nuevo)
+        this.toggleCallButton(true);
 
         // Marcar el contacto como activo
         document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
@@ -1206,6 +1248,428 @@ class ChatApp {
         this.updateMessages();
     }
 
+    //----------------METODOD DE LLAMADAS-----------------------
+
+    // Método para controlar la visibilidad del botón de llamada
+    toggleCallButton(show) {
+        const voiceCallBtn = document.getElementById('voiceCallBtn');
+        if (voiceCallBtn) {
+            if (show && this.selectedContact) {
+                voiceCallBtn.style.display = 'flex';
+                voiceCallBtn.title = `Llamar a ${this.selectedContact.username}`;
+            } else {
+                voiceCallBtn.style.display = 'none';
+            }
+        }
+    }
+
+    // Método para iniciar llamada (iniciador)
+    async startVoiceCall(targetUser) {
+        if (!this.currentUser || !targetUser) {
+            alert("Error: Usuario no válido");
+            return;
+        }
+        
+        if (this.isInCall) {
+            alert("Ya estás en una llamada");
+            return;
+        }
+        
+        try {
+            console.log(" Iniciando llamada con:", targetUser.username);
+            
+            // Solicitar acceso al micrófono
+            this.callStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 16000 // Reducir calidad para mejor rendimiento
+                } 
+            });
+            
+            console.log("Acceso al micrófono concedido para llamada");
+            
+            // Notificar al servidor
+            await this.chatService.startVoiceCall(
+                this.currentUser.id, 
+                targetUser.id
+            );
+            
+            // Configurar para llamada
+            this.isInCall = true;
+            this.activeCall = {
+                targetId: targetUser.id,
+                targetName: targetUser.username,
+                startTime: Date.now(),
+                isInitiator: true
+            };
+            
+            // Iniciar envío y recepción de audio
+            this.startSendingCallAudio();
+            this.startReceivingCallAudio();
+            
+            this.showCallInterface(targetUser);
+            this.showNotification(`Llamada iniciada con ${targetUser.username}`, 'success');
+            
+            console.log("✓ Llamada en curso");
+            
+        } catch (error) {
+            console.error(" Error iniciando llamada:", error);
+            alert("No se pudo iniciar la llamada: " + error.message);
+            this.endVoiceCall();
+        }
+    }
+
+    // Método para unirse a llamada existente (receptor)
+    async joinVoiceCall(callerUser) {
+        if (!this.currentUser || !callerUser) {
+            return;
+        }
+        
+        if (this.isInCall) {
+            return; // Ya está en una llamada
+        }
+        
+        try {
+            console.log(" Uniéndose a llamada de:", callerUser.username);
+            
+            // Solicitar acceso al micrófono
+            this.callStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 16000
+                } 
+            });
+            
+            console.log(" Acceso al micrófono concedido para unirse a llamada");
+            
+            // Configurar para llamada
+            this.isInCall = true;
+            this.activeCall = {
+                targetId: callerUser.id,
+                targetName: callerUser.username,
+                startTime: Date.now(),
+                isInitiator: false
+            };
+            
+            // Iniciar envío y recepción de audio
+            this.startSendingCallAudio();
+            this.startReceivingCallAudio();
+            
+            this.showCallInterface(callerUser);
+            this.showNotification(`En llamada con ${callerUser.username}`, 'success');
+            
+            console.log(" Unido a llamada");
+            
+        } catch (error) {
+            console.error(" Error uniéndose a llamada:", error);
+            this.endVoiceCall();
+        }
+    }
+
+    // Iniciar envío de audio en llamada
+    async startSendingCallAudio() {
+        if (!this.isInCall || !this.callStream) return;
+        
+        try {
+            // Configurar MediaRecorder para streaming
+            this.callMediaRecorder = new MediaRecorder(this.callStream, {
+                mimeType: 'audio/webm;codecs=opus',
+                audioBitsPerSecond: 16000 // Calidad reducida para mejor rendimiento
+            });
+            
+            this.callAudioChunks = [];
+            
+            // Capturar chunks cada 500ms
+            this.callMediaRecorder.ondataavailable = async (event) => {
+                if (event.data && event.data.size > 0) {
+                    try {
+                        // Convertir a base64 y enviar inmediatamente
+                        const base64 = await this.blobToBase64(event.data);
+                        await this.chatService.sendVoiceData(
+                            this.currentUser.id,
+                            this.activeCall.targetId,
+                            base64
+                        );
+                        
+                        console.log(" Audio enviado:", base64.length, "caracteres");
+                    } catch (error) {
+                        console.error(" Error enviando audio:", error);
+                    }
+                }
+            };
+            
+            // Iniciar grabación con timeslice de 500ms
+            this.callMediaRecorder.start(500);
+            console.log("✓ Envío de audio iniciado");
+            
+        } catch (error) {
+            console.error(" Error iniciando envío de audio:", error);
+        }
+    }
+
+    // Iniciar recepción de audio en llamada
+    async startReceivingCallAudio() {
+        if (!this.isInCall) return;
+        
+        // Crear elemento de audio para reproducir
+        this.callAudioElement = document.createElement('audio');
+        this.callAudioElement.autoplay = true;
+        this.callAudioElement.style.display = 'none';
+        document.body.appendChild(this.callAudioElement);
+        
+        // Polling para recibir audio
+        this.audioPollInterval = setInterval(async () => {
+            if (!this.isInCall) return;
+            
+            try {
+                // Obtener audio del servidor
+                const audioData = await this.chatService.getCallAudio(this.currentUser.id);
+                
+                if (audioData && audioData.length > 0) {
+                    console.log(" Audio recibido:", audioData.length, "caracteres");
+                    this.playCallAudio(audioData);
+                }
+            } catch (error) {
+                console.error(" Error recibiendo audio:", error);
+            }
+        }, 300); // Poll cada 300ms para baja latencia
+    }
+
+    // Método de hacer interfaz de llamada
+    showCallInterface(targetUser) {
+        // Crear overlay de llamada
+        const callOverlay = document.createElement('div');
+        callOverlay.id = 'callOverlay';
+        callOverlay.className = 'call-overlay active';
+        
+        callOverlay.innerHTML = `
+            <div class="call-container">
+                <div class="call-avatar">${targetUser.username.charAt(0).toUpperCase()}</div>
+                <h2 class="call-name">${this.escapeHtml(targetUser.username)}</h2>
+                <p class="call-status">Llamada en curso...</p>
+                <div class="call-timer" id="callTimer">00:00</div>
+                
+                <div class="call-controls">
+                    <button class="call-btn mute-btn" id="muteBtn" title="Silenciar">
+                        <i class="fas fa-microphone"></i>
+                    </button>
+                    <button class="call-btn end-btn" id="endCallBtn" title="Finalizar">
+                        <i class="fas fa-phone-slash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(callOverlay);
+        
+        // Event listeners
+        document.getElementById('endCallBtn').onclick = () => this.endVoiceCall();
+        
+        document.getElementById('muteBtn').onclick = () => {
+            if (this.callStream) {
+                const tracks = this.callStream.getAudioTracks();
+                tracks.forEach(track => {
+                    track.enabled = !track.enabled;
+                    const muteBtn = document.getElementById('muteBtn');
+                    if (track.enabled) {
+                        muteBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                        muteBtn.classList.remove('muted');
+                    } else {
+                        muteBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+                        muteBtn.classList.add('muted');
+                    }
+                });
+            }
+        };
+        
+        // Iniciar timer
+        this.startCallTimer();
+    }
+
+    //metodo detener timer de llamada
+    hideCallInterface() {
+        const callOverlay = document.getElementById('callOverlay');
+        if (callOverlay) {
+            callOverlay.remove();
+        }
+        
+        if (this.callTimerInterval) {
+            clearInterval(this.callTimerInterval);
+            this.callTimerInterval = null;
+        }
+    }
+
+    //metodo de tiempo de duracion de llamada
+    startCallTimer() {
+        const timerDisplay = document.getElementById('callTimer');
+        if (!timerDisplay) return;
+        
+        this.callTimerInterval = setInterval(() => {
+            if (!this.isInCall || !this.activeCall) {
+                clearInterval(this.callTimerInterval);
+                return;
+            }
+            
+            const elapsed = Math.floor((Date.now() - this.activeCall.startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            timerDisplay.textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }, 1000);
+    }
+
+    // Reproducir audio recibido
+    playCallAudio(base64Data) {
+        if (!this.callAudioElement) return;
+        
+        try {
+            // Crear URL de audio
+            const audioUrl = `data:audio/webm;base64,${base64Data}`;
+            
+            // Si ya está reproduciendo, detener y cambiar fuente
+            if (!this.callAudioElement.paused) {
+                this.callAudioElement.pause();
+            }
+            
+            this.callAudioElement.src = audioUrl;
+            this.callAudioElement.play().catch(e => {
+                console.error(" Error reproduciendo audio:", e);
+            });
+            
+        } catch (error) {
+            console.error(" Error preparando audio:", error);
+        }
+    }
+
+    // Método finalizar llamada
+    async endVoiceCall() {
+        if (!this.isInCall) return;
+        
+        try {
+            console.log(" Finalizando llamada...");
+            
+            // Detener MediaRecorder
+            if (this.callMediaRecorder && this.callMediaRecorder.state !== 'inactive') {
+                this.callMediaRecorder.stop();
+            }
+            
+            // Detener stream
+            if (this.callStream) {
+                this.callStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Detener polling de audio
+            if (this.audioPollInterval) {
+                clearInterval(this.audioPollInterval);
+                this.audioPollInterval = null;
+            }
+            
+            // Remover elemento de audio
+            if (this.callAudioElement) {
+                this.callAudioElement.remove();
+                this.callAudioElement = null;
+            }
+            
+            // Notificar al servidor si es el iniciador
+            if (this.activeCall && this.activeCall.isInitiator) {
+                await this.chatService.endVoiceCall(this.currentUser.id);
+            }
+            
+            // Limpiar estado
+            this.isInCall = false;
+            this.activeCall = null;
+            this.callMediaRecorder = null;
+            this.callStream = null;
+            this.callAudioChunks = [];
+            
+            this.hideCallInterface();
+            this.showNotification("Llamada finalizada", 'info');
+            
+            console.log(" Llamada finalizada");
+            
+        } catch (error) {
+            console.error(" Error finalizando llamada:", error);
+        }
+    }
+
+    // Método para verificar llamadas entrantes
+    async checkIncomingCalls() {
+        if (this.isInCall || !this.currentUser) return;
+        
+        try {
+            // Verificar si hay llamadas activas para este usuario
+            const activeCallInfo = await this.chatService.getActiveCall(this.currentUser.id);
+            
+            if (activeCallInfo) {
+                const [callId, callerId, receiverId] = activeCallInfo.split(':');
+                
+                // Si el receptor es este usuario, unirse a la llamada
+                if (receiverId === this.currentUser.id) {
+                    const users = await this.chatService.getUsers();
+                    const callerUser = users.find(user => user.id === callerId);
+                    
+                    if (callerUser && !this.isInCall) {
+                        // Mostrar notificación de llamada entrante
+                        this.showIncomingCallNotification(callerUser);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error(" Error verificando llamadas:", error);
+        }
+    }
+
+    // Mostrar notificación de llamada entrante
+    showIncomingCallNotification(callerUser) {
+        const notification = document.createElement('div');
+        notification.className = 'incoming-call-notification';
+        notification.innerHTML = `
+            <div class="call-notification-content">
+                <div class="call-avatar">${callerUser.username.charAt(0).toUpperCase()}</div>
+                <div class="call-info">
+                    <div class="caller-name">${this.escapeHtml(callerUser.username)}</div>
+                    <div class="call-status">Llamada entrante...</div>
+                </div>
+                <div class="call-actions">
+                    <button class="btn-accept" id="acceptCallBtn">
+                        <i class="fas fa-phone"></i>
+                    </button>
+                    <button class="btn-reject" id="rejectCallBtn">
+                        <i class="fas fa-phone-slash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Event listeners
+        document.getElementById('acceptCallBtn').onclick = () => {
+            notification.remove();
+            this.joinVoiceCall(callerUser);
+        };
+        
+        document.getElementById('rejectCallBtn').onclick = () => {
+            notification.remove();
+            this.endVoiceCall();
+        };
+        
+        // Auto-rechazar después de 30 segundos
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+                this.endVoiceCall();
+            }
+        }, 30000);
+    }
+
+//---------------------------SECCION HTML------------------------------
+
+    //metodo de encabezado
     updateChatHeader(title, subtitle) {
         const headerInfo = this.chatHeader.querySelector('.chat-header-info');
 
@@ -1227,7 +1691,11 @@ class ChatApp {
 
     backToGeneralChat() {
         this.selectedContact = null;
+        this.selectedGroup = null;
         this.updateChatHeader("Chat General", "Conectado como " + this.currentUser.username);
+
+        // Ocultar botón de llamada
+        this.toggleCallButton(false);
 
         // Desmarcar todos los contactos
         document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
@@ -1294,122 +1762,6 @@ class ChatApp {
         }
     }
 }
-
-// Añadir estilos adicionales
-const style = document.createElement('style');
-style.textContent = `
-    .system-message {
-        align-self: center;
-        margin: 10px 0;
-    }
-    .system-message-content {
-        background: var(--bg-card);
-        color: var(--text-muted);
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .system-message-content i {
-        color: var(--secondary);
-    }
-    
-    .member-badge {
-        display: inline-block;
-        background: var(--secondary);
-        color: white;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 0.7rem;
-        margin-left: 8px;
-        font-weight: 600;
-    }
-    
-    .btn-secondary {
-        flex: 1;
-        padding: 14px;
-        border-radius: 12px;
-        border: 1px solid var(--border);
-        background: var(--bg-input);
-        color: var(--text);
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        transition: all 0.2s ease;
-    }
-    
-    .btn-secondary:hover {
-        background: var(--bg-card);
-        border-color: var(--text-muted);
-    }
-    
-    .notification {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: var(--bg-card);
-        color: var(--text);
-        padding: 15px 20px;
-        border-radius: 12px;
-        border: 1px solid var(--border);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        transform: translateX(400px);
-        opacity: 0;
-        transition: all 0.3s ease;
-        z-index: 2000;
-        max-width: 350px;
-    }
-    
-    .notification.show {
-        transform: translateX(0);
-        opacity: 1;
-    }
-    
-    .notification-success {
-        border-color: var(--secondary);
-    }
-    
-    .notification-success i {
-        color: var(--secondary);
-    }
-    
-    .notification-info i {
-        color: var(--primary);
-    }
-    
-    .back-btn {
-        margin-right: 10px;
-    }
-    
-    .back-btn:hover {
-        transform: translateX(-2px);
-    }
-    
-    .join-modal {
-        animation: modalZoomIn 0.3s ease;
-    }
-    
-    @keyframes modalZoomIn {
-        from {
-            transform: scale(0.9);
-            opacity: 0;
-        }
-        to {
-            transform: scale(1);
-            opacity: 1;
-        }
-    }
-`;
-document.head.appendChild(style);
 
 // Inicializar la aplicación - Prevenir múltiples inicializaciones
 let app;
