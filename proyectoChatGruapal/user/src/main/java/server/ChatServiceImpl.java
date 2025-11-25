@@ -327,20 +327,23 @@ public class ChatServiceImpl implements ChatService, Subject {
         User target = users.get(targetUserId);
         
         if (caller == null || target == null) {
-            System.err.println(" Usuario no encontrado para llamada");
+            System.err.println("❌ Usuario no encontrado para llamada");
             return;
         }
         
         // Verificar si ya hay una llamada activa entre estos usuarios
         String callId = getCallId(userId, targetUserId);
         if (activeCalls.containsKey(callId)) {
-            System.out.println(" Ya existe una llamada activa: " + callId);
+            System.out.println("⚠️ Ya existe una llamada activa: " + callId);
             return;
         }
         
         // Crear nueva llamada
         VoiceCall call = new VoiceCall(callId, userId, targetUserId);
         activeCalls.put(callId, call);
+        
+        // Inicializar mapa de audio para esta llamada
+        callAudioData.put(callId, new ConcurrentHashMap<>());
         
         // Enviar mensaje de sistema
         Message callMsg = new Message(
@@ -353,11 +356,13 @@ public class ChatServiceImpl implements ChatService, Subject {
         messages.add(callMsg);
         
         notifyObservers();
-        System.out.println(" Llamada iniciada: " + caller.getUsername() + " -> " + target.getUsername());
+        System.out.println("📞 Llamada iniciada: " + caller.getUsername() + " -> " + target.getUsername());
+        debugActiveCalls(current); // Diagnóstico
     }
 
-    @Override
-        public synchronized void endVoiceCall(String userId, Current current) {
+
+   @Override
+    public synchronized void endVoiceCall(String userId, Current current) {
         User user = users.get(userId);
         if (user == null) return;
         
@@ -389,27 +394,37 @@ public class ChatServiceImpl implements ChatService, Subject {
             messages.add(callMsg);
             
             notifyObservers();
-            System.out.println(" Llamada finalizada: " + user.getUsername() + " (" + duration + "s)");
+            System.out.println("📞 Llamada finalizada: " + user.getUsername() + " (" + duration + "s)");
         }
     }
 
     //metodo para enviar audio
-    @Override
+   @Override
     public synchronized void sendVoiceData(String userId, String targetUserId, String audioData, Current current) {
         String callId = getCallId(userId, targetUserId);
         VoiceCall call = activeCalls.get(callId);
         
         if (call == null || !call.isActive()) {
-            System.err.println(" No hay llamada activa entre " + userId + " y " + targetUserId);
+            System.err.println("❌ No hay llamada activa entre " + userId + " y " + targetUserId);
             return;
         }
         
-        // Almacenar temporalmente el audio de llamada (NO como mensaje)
-        // Usar una estructura separada para audio de llamadas
-        callAudioData.computeIfAbsent(callId, k -> new ConcurrentHashMap<>())
-                    .put(userId, audioData);
+        // Almacenar temporalmente el audio de llamada
+        Map<String, String> audioMap = callAudioData.get(callId);
+        if (audioMap == null) {
+            // Si no existe el mapa, crearlo
+            audioMap = new ConcurrentHashMap<>();
+            callAudioData.put(callId, audioMap);
+        }
         
-        System.out.println(" Audio de llamada almacenado: " + userId + " -> " + targetUserId);
+        audioMap.put(userId, audioData);
+        
+        System.out.println("🔊 Audio almacenado: " + userId + " -> " + targetUserId + 
+                        " | Tamaño: " + audioData.length() + " chars | " +
+                        "CallID: " + callId);
+        
+        // Diagnóstico: mostrar estado actual del audio
+        debugCallAudio(callId);
     }
 
     // Método para obtener el estado de una llamada
@@ -443,12 +458,14 @@ public class ChatServiceImpl implements ChatService, Subject {
         }
         
         if (activeCall == null) {
+            System.out.println("❌ " + userId + " - No hay llamada activa");
             return "";
         }
         
         // Obtener el otro participante
         String otherUserId = activeCall.getOtherParticipant(userId);
         if (otherUserId == null) {
+            System.out.println("❌ " + userId + " - No se pudo encontrar el otro participante");
             return "";
         }
         
@@ -457,11 +474,60 @@ public class ChatServiceImpl implements ChatService, Subject {
         Map<String, String> audioMap = callAudioData.get(callId);
         
         if (audioMap == null) {
+            System.out.println("❌ " + userId + " - No hay mapa de audio para callId: " + callId);
             return "";
         }
         
         String audio = audioMap.get(otherUserId);
-        return audio != null ? audio : "";
+        
+        if (audio != null && audio.length() > 0) {
+            System.out.println("✅ Audio enviado a " + userId + " desde " + otherUserId + 
+                            " | Tamaño: " + audio.length() + " chars | " +
+                            "CallID: " + callId);
+            return audio;
+        } else {
+            System.out.println("⚠️ " + userId + " - No hay audio disponible de " + otherUserId);
+            return "";
+        }
+    }
+
+    // Método de diagnóstico para llamadas activas
+    private synchronized void debugActiveCalls(Current current) {
+        System.out.println("\n=== DIAGNÓSTICO LLAMADAS ACTIVAS ===");
+        System.out.println("Total llamadas activas: " + activeCalls.size());
+        
+        for (VoiceCall call : activeCalls.values()) {
+            System.out.println("📞 Llamada: " + call.getCallId() + 
+                            " | Activa: " + call.isActive() +
+                            " | Caller: " + call.getCallerId() + 
+                            " | Receiver: " + call.getReceiverId());
+            
+            Map<String, String> audioMap = callAudioData.get(call.getCallId());
+            if (audioMap != null) {
+                System.out.println("   🔊 Audio disponible:");
+                for (String userId : audioMap.keySet()) {
+                    String audio = audioMap.get(userId);
+                    System.out.println("      👤 " + userId + ": " + 
+                                    (audio != null ? audio.length() + " caracteres" : "null"));
+                }
+            } else {
+                System.out.println("   🔇 Sin audio disponible");
+            }
+        }
+        System.out.println("=====================================\n");
+    }
+
+    // Método de diagnóstico para audio específico
+    private synchronized void debugCallAudio(String callId) {
+        Map<String, String> audioMap = callAudioData.get(callId);
+        if (audioMap != null) {
+            System.out.println("🎯 Diagnóstico Audio CallID: " + callId);
+            for (String userId : audioMap.keySet()) {
+                String audio = audioMap.get(userId);
+                System.out.println("   👤 " + userId + ": " + 
+                                (audio != null ? audio.length() + " caracteres" : "null"));
+            }
+        }
     }
 
     // ========== PATRÓN OBSERVER ==========
