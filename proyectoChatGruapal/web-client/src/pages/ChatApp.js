@@ -866,7 +866,7 @@ class ChatApp {
                 } 
             });
             
-            console.log("✓ Acceso al micrófono concedido");
+            console.log(" Acceso al micrófono concedido");
             
             // Determinar el mejor codec disponible
             let mimeType = '';
@@ -1248,7 +1248,7 @@ class ChatApp {
         this.updateMessages();
     }
 
-    // ========== IMPLEMENTACIÓN MEJORADA DE LLAMADAS ==========
+    // ========== IMPLEMENTACIÓN DE LLAMADAS ==========
 
     // Método para controlar la visibilidad del botón de llamada
     toggleCallButton(show) {
@@ -1278,23 +1278,27 @@ class ChatApp {
         try {
             console.log(" Iniciando llamada con:", targetUser.username);
             
-            // Solicitar acceso al micrófono
+            // 1. Notificar al servidor PRIMERO
+            await this.chatService.startVoiceCall(this.currentUser.id, targetUser.id);
+            console.log(" Servidor notificado");
+            
+            // 2. ESPERAR un momento para que el servidor inicialice todo
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // 3. Solicitar acceso al micrófono
             this.callStream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    sampleRate: 16000,
+                    sampleRate: 44100,
                     channelCount: 1
                 } 
             });
             
             console.log(" Acceso al micrófono concedido");
             
-            // Notificar al servidor
-            await this.chatService.startVoiceCall(this.currentUser.id, targetUser.id);
-            
-            // Configurar para llamada
+            // 4. Configurar estado de llamada
             this.isInCall = true;
             this.activeCall = {
                 targetId: targetUser.id,
@@ -1303,10 +1307,11 @@ class ChatApp {
                 isInitiator: true
             };
             
-            // Iniciar envío y recepción de audio
+            // 5. Iniciar envío y recepción
             this.startSendingCallAudio();
             this.startReceivingCallAudio();
             
+            // 6. Mostrar interfaz
             this.showCallInterface(targetUser);
             this.showNotification(`Llamada iniciada con ${targetUser.username}`, 'success');
             
@@ -1318,6 +1323,7 @@ class ChatApp {
             this.endVoiceCall();
         }
     }
+
 
     // Método para unirse a llamada existente
     async joinVoiceCall(callerUser) {
@@ -1334,7 +1340,7 @@ class ChatApp {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    sampleRate: 16000,
+                    sampleRate: 44100,
                     channelCount: 1
                 } 
             });
@@ -1366,54 +1372,57 @@ class ChatApp {
     }
 
     // Envío de audio
-        async startSendingCallAudio() {
+    async startSendingCallAudio() {
         if (!this.isInCall || !this.callStream) return;
         
         try {
-            console.log(" Iniciando envío de audio...");
+            console.log(" Iniciando envío de audio PCM...");
             
-            // Configuración básica - máxima compatibilidad
-            const options = {
-                audioBitsPerSecond: 64000 // Calidad baja para mejor rendimiento
-            };
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(this.callStream);
             
-            // Intentar diferentes formatos
-            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-                options.mimeType = 'audio/webm;codecs=opus';
-            } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-                options.mimeType = 'audio/webm';
-            } else {
-                console.warn(" Usando formato por defecto del navegador");
-            }
+            // 16kHz, 16bits, mono
+            const scriptNode = audioContext.createScriptProcessor(2048, 1, 1);
             
-            this.callMediaRecorder = new MediaRecorder(this.callStream, options);
-            
-            // Enviar chunks individualmente (más simple)
-            this.callMediaRecorder.ondataavailable = async (event) => {
-                if (event.data && event.data.size > 0 && this.isInCall && this.activeCall) {
-                    try {
-                        const base64 = await this.blobToBase64(event.data);
-                        
-                        if (base64.length > 100) { // Solo enviar si tiene contenido
-                            await this.chatService.sendVoiceData(
-                                this.currentUser.id,
-                                this.activeCall.targetId,
-                                base64
-                            );
-                            console.log(" Audio enviado - Tamaño:", base64.length, "caracteres");
-                        }
-                    } catch (error) {
-                        console.error(" Error enviando audio:", error);
-                    }
+            scriptNode.onaudioprocess = (audioProcessingEvent) => {
+                if (!this.isInCall) return;
+                
+                const inputBuffer = audioProcessingEvent.inputBuffer;
+                const inputData = inputBuffer.getChannelData(0);
+                
+                // Convertir Float32 a Int16 
+                const int16Data = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    // Aplicar normalización para mejor calidad
+                    let sample = inputData[i];
+                    // Limitar el rango y normalizar
+                    sample = Math.max(-0.99, Math.min(0.99, sample));
+                    int16Data[i] = sample * 32767;
+                }
+                
+                // Convertir a base64 para enviar
+                const base64 = btoa(String.fromCharCode(...new Uint8Array(int16Data.buffer)));
+                
+                if (this.isInCall && this.activeCall) {
+                    // Enviar de forma asíncrona sin esperar
+                    this.chatService.sendVoiceData(
+                        this.currentUser.id,
+                        this.activeCall.targetId,
+                        base64
+                    ).catch(error => console.error("Error enviando audio:", error));
                 }
             };
             
-            // Iniciar grabación con timeslice de 500ms
-            this.callMediaRecorder.start(500);
-            console.log(" Envío de audio iniciado");
+            source.connect(scriptNode);
+            scriptNode.connect(audioContext.destination);
+            
+            this.audioContext = audioContext;
+            this.scriptNode = scriptNode;
+            
+            console.log(" Envío de audio PCM iniciado");
             
         } catch (error) {
-            console.error(" Error iniciando envío de audio:", error);
+            console.error(" Error iniciando envío de audio PCM:", error);
         }
     }
 
@@ -1457,74 +1466,87 @@ class ChatApp {
         if (!this.isInCall) return;
         
         console.log(" Iniciando recepción de audio...");
+        console.log(" CallID esperado:", this.getCallId(this.currentUser.id, this.activeCall.targetId));
         
-        // Polling para recibir audio
+        let pollCount = 0;
+        let lastAudioSize = 0;
+        
         this.audioPollInterval = setInterval(async () => {
             if (!this.isInCall) {
                 clearInterval(this.audioPollInterval);
                 return;
             }
             
+            pollCount++;
             try {
                 const audioData = await this.chatService.getCallAudio(this.currentUser.id);
                 
                 if (audioData && audioData.length > 100) {
-                    console.log(" Audio recibido - Tamaño:", audioData.length, "caracteres");
+                    lastAudioSize = audioData.length;
+                    console.log(` Audio recibido - Poll: ${pollCount} | Tamaño: ${audioData.length} chars`);
                     await this.playAudioDirectly(audioData);
+                } else {
+                    // Log detallado del estado
+                    if (pollCount === 1 || pollCount % 5 === 0) {
+                        console.log(` Poll ${pollCount} - Audio: ${audioData ? audioData.length + ' chars' : 'null'} | Último audio válido: ${lastAudioSize} chars`);
+                    }
                 }
             } catch (error) {
-                console.error(" Error recibiendo audio:", error);
+                console.error(" Error en polling:", error);
             }
-        }, 400); // Polling cada 400ms
+        }, 400);
+    }
+
+    // Método auxiliar para calcular callId (igual que el servidor)
+    getCallId(userId1, userId2) {
+        const ids = [userId1, userId2].sort();
+        return ids[0] + "_" + ids[1];
     }
 
     // Reproducción DIRECTA de audio
     async playAudioDirectly(base64Data) {
         return new Promise((resolve) => {
             try {
-                // Convertir base64 a ArrayBuffer
+                console.log(" Reproduciendo audio PCM...");
+                
+                // Decodificar base64 a ArrayBuffer
                 const binaryString = atob(base64Data);
                 const bytes = new Uint8Array(binaryString.length);
                 for (let i = 0; i < binaryString.length; i++) {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
                 
-                // Crear blob - intentar diferentes formatos
-                let blob, type;
-                if (base64Data.startsWith('Gk')) {
-                    type = 'audio/webm';
-                } else {
-                    type = 'audio/webm;codecs=opus';
+                // Convertir a Int16Array (formato del profesor)
+                const int16Data = new Int16Array(bytes.buffer);
+                
+                // Crear AudioContext
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Crear buffer de audio (16kHz, mono - similar al profesor)
+                const audioBuffer = audioContext.createBuffer(1, int16Data.length, 16000);
+                const channelData = audioBuffer.getChannelData(0);
+                
+                // Convertir Int16 back to Float32
+                for (let i = 0; i < int16Data.length; i++) {
+                    channelData[i] = int16Data[i] / 32768;
                 }
                 
-                blob = new Blob([bytes], { type: type });
-                const audioUrl = URL.createObjectURL(blob);
+                // Crear fuente y reproducir
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
                 
-                // Crear y configurar audio
-                const audio = new Audio();
-                audio.src = audioUrl;
-                audio.volume = 1.0;
-                
-                // Eventos para limpieza
-                const cleanup = () => {
-                    URL.revokeObjectURL(audioUrl);
+                source.onended = () => {
+                    console.log(" Audio PCM reproducido completamente");
+                    audioContext.close();
                     resolve();
                 };
                 
-                audio.onended = cleanup;
-                audio.onerror = (e) => {
-                    console.error(" Error reproduciendo audio:", e);
-                    cleanup();
-                };
-                
-                // Intentar reproducir
-                audio.play().catch(e => {
-                    console.log(" Reproducción automática bloqueada - audio cargado");
-                    cleanup();
-                });
+                source.start(0);
+                console.log(" Audio PCM reproduciéndose...");
                 
             } catch (error) {
-                console.error(" Error preparando audio:", error);
+                console.error(" Error reproduciendo audio PCM:", error);
                 resolve();
             }
         });
@@ -1585,41 +1607,21 @@ class ChatApp {
         console.log(" Finalizando llamada...");
         
         try {
-            // 1. Detener envío de audio
-            if (this.callMediaRecorder && this.callMediaRecorder.state !== 'inactive') {
-                this.callMediaRecorder.stop();
-                console.log(" MediaRecorder detenido");
+                    // Limpiar AudioContext y ScriptNode
+            if (this.scriptNode) {
+                this.scriptNode.disconnect();
+                this.scriptNode = null;
             }
             
-            // 2. Detener stream
-            if (this.callStream) {
-                this.callStream.getTracks().forEach(track => {
-                    track.stop();
-                    console.log(" Track detenido:", track.kind);
-                });
-            }
-            
-            // 3. Detener recepción
-            if (this.audioPollInterval) {
-                clearInterval(this.audioPollInterval);
-                this.audioPollInterval = null;
-                console.log(" Polling detenido");
-            }
-            
-            // 4. Notificar servidor (solo iniciador)
-            if (this.activeCall && this.activeCall.isInitiator && this.currentUser) {
-                try {
-                    await this.chatService.endVoiceCall(this.currentUser.id);
-                    console.log(" Servidor notificado");
-                } catch (error) {
-                    console.error(" Error notificando servidor:", error);
-                }
+            if (this.audioContext) {
+                await this.audioContext.close();
+                this.audioContext = null;
             }
             
         } catch (error) {
             console.error(" Error durante limpieza:", error);
         } finally {
-            // 5. LIMPIAR ESTADO
+            // 5. Limpiar estado
             this.isInCall = false;
             this.activeCall = null;
             this.callMediaRecorder = null;
