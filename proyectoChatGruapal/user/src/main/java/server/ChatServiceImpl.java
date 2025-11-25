@@ -7,7 +7,7 @@ import com.zeroc.IceInternal.Incoming;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 
 public class ChatServiceImpl implements ChatService, Subject {
     
@@ -30,27 +30,56 @@ public class ChatServiceImpl implements ChatService, Subject {
 
     // ========== RESOLVER CONFLICTOS DE INTERFACES ==========
     
+    // Implementar _iceDispatch manualmente para resolver el conflicto de herencia múltiple
     @Override
-    public CompletionStage<com.zeroc.Ice.OutputStream> _iceDispatch(Incoming in, Current current) 
+    public java.util.concurrent.CompletionStage<com.zeroc.Ice.OutputStream> _iceDispatch(Incoming in, Current current) 
             throws com.zeroc.Ice.UserException {
-        try {
+        // Primero intentar con las operaciones de ChatService
+        String[] chatServiceOps = {
+            "createGroup", "endVoiceCall", "getGroupMessages", "getGroups",
+            "getMessages", "getPrivateMessages", "getUsers", "ice_id", "ice_ids",
+            "ice_isA", "ice_ping", "joinChat", "joinGroup", "leaveChat",
+            "sendGroupMessage", "sendMessage", "sendPrivateMessage", "startVoiceCall"
+        };
+        
+        int pos = Arrays.binarySearch(chatServiceOps, current.operation);
+        if (pos >= 0) {
+            // Es una operación de ChatService, delegar a su implementación
             return ChatService.super._iceDispatch(in, current);
-        } catch (com.zeroc.Ice.OperationNotExistException e) {
+        }
+        
+        // Si no es de ChatService, intentar con Subject
+        String[] subjectOps = {
+            "attachObserver", "detachObserver", "ice_id", "ice_ids",
+            "ice_isA", "ice_ping"
+        };
+        
+        pos = Arrays.binarySearch(subjectOps, current.operation);
+        if (pos >= 0) {
+            // Es una operación de Subject, delegar a su implementación
             return Subject.super._iceDispatch(in, current);
         }
+        
+        // Si no es de ninguna, lanzar excepción
+        throw new com.zeroc.Ice.OperationNotExistException(current.id, current.facet, current.operation);
     }
 
     @Override
     public String ice_id(Current current) {
-        return ChatService.super.ice_id(current);
+        // Retornar la ID principal (ChatService)
+        return ChatService.ice_staticId();
     }
 
     @Override
     public String[] ice_ids(Current current) {
+        // Combinar todas las IDs de ambas interfaces
         Set<String> allIds = new HashSet<>();
         allIds.addAll(Arrays.asList(ChatService.super.ice_ids(current)));
         allIds.addAll(Arrays.asList(Subject.super.ice_ids(current)));
-        return allIds.toArray(new String[0]);
+        // Ordenar para consistencia
+        String[] result = allIds.toArray(new String[0]);
+        Arrays.sort(result);
+        return result;
     }
 
     // ========== MÉTODOS DE USUARIOS ==========
@@ -176,6 +205,16 @@ public class ChatServiceImpl implements ChatService, Subject {
 
         MessageType messageType = MessageType.fromIceEnum(type);
 
+        // Log para verificar el tamaño del contenido recibido
+        if (type == MessageTypeEnum.AUDIO) {
+            System.out.println("Mensaje de audio recibido - Longitud del contenido: " + content.length() + " caracteres");
+            System.out.println("Tamaño estimado del audio: " + (content.length() * 3) / 4 + " bytes");
+            if (content.length() > 0) {
+                System.out.println("Primeros 50 caracteres: " + content.substring(0, Math.min(50, content.length())));
+                System.out.println("Últimos 50 caracteres: " + content.substring(Math.max(0, content.length() - 50)));
+            }
+        }
+
         Message message = new Message(
             "msg_" + (++messageCounter),
             userId,
@@ -188,7 +227,11 @@ public class ChatServiceImpl implements ChatService, Subject {
         String chatId = getPrivateChatId(userId, targetUserId);
         privateMessages.computeIfAbsent(chatId, k -> new CopyOnWriteArrayList<>()).add(message);
 
-        System.out.println("[" + sender.getUsername() + " -> " + target.getUsername() + "]: " + content);
+        if (type == MessageTypeEnum.AUDIO) {
+            System.out.println("[" + sender.getUsername() + " -> " + target.getUsername() + "]: Audio guardado (tamaño: " + content.length() + " caracteres)");
+        } else {
+            System.out.println("[" + sender.getUsername() + " -> " + target.getUsername() + "]: " + content);
+        }
     }
     
     @Override
@@ -339,15 +382,36 @@ public class ChatServiceImpl implements ChatService, Subject {
         
         for (ObserverPrx observer : observers) {
             try {
-                observer.updateMessagesAsync(msgArray);
-                observer.updateUsersAsync(userArray);
+                // Llamadas asíncronas - manejar los CompletableFuture
+                CompletableFuture<Void> msgFuture = observer.updateMessagesAsync(msgArray);
+                CompletableFuture<Void> userFuture = observer.updateUsersAsync(userArray);
+                
+                // Manejar errores asincrónicamente
+                msgFuture.exceptionally(ex -> {
+                    System.err.println("Error notificando mensajes al observer: " + ex.getMessage());
+                    synchronized (observers) {
+                        toRemove.add(observer);
+                    }
+                    return null;
+                });
+                
+                userFuture.exceptionally(ex -> {
+                    System.err.println("Error notificando usuarios al observer: " + ex.getMessage());
+                    synchronized (observers) {
+                        toRemove.add(observer);
+                    }
+                    return null;
+                });
             } catch (Exception e) {
                 System.err.println("Error notificando observer: " + e.getMessage());
                 toRemove.add(observer);
             }
         }
         
-        observers.removeAll(toRemove);
+        // Remover observadores con errores
+        synchronized (observers) {
+            observers.removeAll(toRemove);
+        }
     }
 
    
@@ -381,6 +445,12 @@ public class ChatServiceImpl implements ChatService, Subject {
         // Convertir tipo de mensaje
         MessageType messageType = MessageType.fromIceEnum(type);
         
+        // Log para verificar el tamaño del contenido recibido
+        if (type == MessageTypeEnum.AUDIO) {
+            System.out.println("Mensaje de audio en grupo recibido - Longitud del contenido: " + content.length() + " caracteres");
+            System.out.println("Tamaño estimado del audio: " + (content.length() * 3) / 4 + " bytes");
+        }
+        
         // Crear el mensaje
         Message message = new Message(
             "msg_" + (++messageCounter),
@@ -394,7 +464,11 @@ public class ChatServiceImpl implements ChatService, Subject {
         groupMessages.computeIfAbsent(groupId, k -> new CopyOnWriteArrayList<>()).add(message);
         
         // Log en consola del servidor
-        System.out.println(" [Grupo: " + group.getName() + "] " + user.getUsername() + ": " + content);
+        if (type == MessageTypeEnum.AUDIO) {
+            System.out.println(" [Grupo: " + group.getName() + "] " + user.getUsername() + ": Audio guardado (tamaño: " + content.length() + " caracteres)");
+        } else {
+            System.out.println(" [Grupo: " + group.getName() + "] " + user.getUsername() + ": " + content);
+        }
     }
 
     @Override
