@@ -38,6 +38,9 @@ class ChatApp {
         this.isInCall = false;
         this.callAudioChunks = [];
         this.callSendInterval = null;
+        this.lastSendTime = 0;
+        this.audioSendQueue = [];
+        this.isProcessingQueue = false;
 
         // Referencias DOM
         this.messagesContainer = document.getElementById('messages');
@@ -1286,13 +1289,16 @@ class ChatApp {
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // 3. Solicitar acceso al micrófono
-            this.callStream = await navigator.mediaDevices.getUserMedia({ 
+             this.callStream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true,
-                    sampleRate: 44100,
-                    channelCount: 1
+                    autoGainControl: false,  //  Mejor: desactivar para más control
+                    sampleRate: 48000,       //  Mejor: 48kHz calidad profesional
+                    channelCount: 1,
+                    latency: 0.01,           //  Baja latencia
+                    sampleSize: 16,
+                    volume: 1.0
                 } 
             });
             
@@ -1373,104 +1379,98 @@ class ChatApp {
 
     // Envío de audio
     async startSendingCallAudio() {
-        if (!this.isInCall || !this.callStream) return;
+    if (!this.isInCall || !this.callStream) return;
+    
+    try {
+        console.log(" Iniciando envío de audio PCM...");
         
-        try {
-            console.log(" Iniciando envío de audio PCM...");
+        //  OPTIMIZAR: Mejor configuración de AudioContext
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: 48000  // Calidad profesional
+        });
+        
+        const source = audioContext.createMediaStreamSource(this.callStream);
+        
+        //  OPTIMIZAR: Buffer más grande para menos fragmentación
+        const scriptNode = audioContext.createScriptProcessor(4096, 1, 1);  // 1024 → 4096
+        
+        scriptNode.onaudioprocess = (audioProcessingEvent) => {
+            if (!this.isInCall) return;
             
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioContext.createMediaStreamSource(this.callStream);
+            const inputBuffer = audioProcessingEvent.inputBuffer;
+            const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+            const processedData = this.preprocessAudio(inputData);
             
-            // 16kHz, 16bits, mono
-            const scriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+            //  OPTIMIZAR: Mejor conversión con compresión suave
+            const int16Data = new Int16Array(processedData.length);
+            for (let i = 0; i < processedData.length; i++) {
+                int16Data[i] = Math.max(-32768, Math.min(32767, processedData[i] * 32767));
+            }
+            // Convertir a base64 para enviar
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(int16Data.buffer)));
             
-            scriptNode.onaudioprocess = (audioProcessingEvent) => {
-                if (!this.isInCall) return;
-                
-                const inputBuffer = audioProcessingEvent.inputBuffer;
-                const inputData = inputBuffer.getChannelData(0);
-                
-                // Convertir Float32 a Int16 
-                const int16Data = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) {
-                    // Aplicar normalización para mejor calidad
-                    let sample = inputData[i];
-                    // Limitar el rango y normalizar
-                    sample = Math.max(-0.99, Math.min(0.99, sample));
-                    int16Data[i] = sample * 32767;
-                }
-                
-                // Convertir a base64 para enviar
-                const base64 = btoa(String.fromCharCode(...new Uint8Array(int16Data.buffer)));
-                
-                if (this.isInCall && this.activeCall) {
-                    // Enviar de forma asíncrona sin esperar
+            if (this.isInCall && this.activeCall && base64.length > 500) {
+                //  OPTIMIZAR: Throttling para no saturar el servidor
+                if (!this.lastSendTime || Date.now() - this.lastSendTime > 80) {
                     this.chatService.sendVoiceData(
                         this.currentUser.id,
                         this.activeCall.targetId,
                         base64
                     ).catch(error => console.error("Error enviando audio:", error));
+                    
+                    this.lastSendTime = Date.now();
                 }
-            };
-            
+            }
+        };
+        
             source.connect(scriptNode);
             scriptNode.connect(audioContext.destination);
             
             this.audioContext = audioContext;
             this.scriptNode = scriptNode;
             
-            console.log(" Envío de audio PCM iniciado");
+            console.log(" Envío de audio PCM iniciado (48kHz, buffer 4096)");
             
         } catch (error) {
             console.error(" Error iniciando envío de audio PCM:", error);
         }
     }
 
-    // Enviar buffer acumulado de audio
-    async sendAudioBuffer() {
-        if (!this.audioSendBuffer.length || !this.isInCall || !this.activeCall) {
-            return;
+    // Método  mejor calidad de audio
+    preprocessAudio(inputData) {
+        const processed = new Float32Array(inputData.length);
+        
+        // Aplicar filtro paso bajo suave para voz
+        let prevSample = 0;
+        const alpha = 0.2; // Factor de suavizado
+        
+        for (let i = 0; i < inputData.length; i++) {
+            let sample = inputData[i];
+            
+            // Suavizado para reducir ruido de alta frecuencia
+            sample = alpha * sample + (1 - alpha) * prevSample;
+            prevSample = sample;
+            
+            // Compresión dinámica suave para voz
+            if (Math.abs(sample) > 0.3) {
+                sample = Math.sign(sample) * (0.3 + (Math.abs(sample) - 0.3) * 0.5);
+            }
+            
+            processed[i] = sample;
         }
         
-        try {
-            // Crear blob con todos los chunks acumulados
-            const blob = new Blob(this.audioSendBuffer, { 
-                type: 'audio/webm;codecs=opus' 
-            });
-            
-            // Convertir a base64
-            const base64 = await this.blobToBase64(blob);
-            
-            // Enviar al servidor
-            await this.chatService.sendVoiceData(
-                this.currentUser.id,
-                this.activeCall.targetId,
-                base64
-            );
-            
-            console.log("✓ Audio enviado - Tamaño:", base64.length, "caracteres, Chunks:", this.audioSendBuffer.length);
-            
-            // Limpiar buffer y actualizar tiempo
-            this.audioSendBuffer = [];
-            this.lastSendTime = Date.now();
-            
-        } catch (error) {
-            console.error(" Error enviando audio:", error);
-            // En caso de error, limpiar el buffer para evitar acumulación
-            this.audioSendBuffer = [];
-        }
+        return processed;
     }
 
     // Recepción mejorada de audio
     async startReceivingCallAudio() {
         if (!this.isInCall) return;
         
-        console.log(" Iniciando recepción de audio...");
-        console.log(" CallID esperado:", this.getCallId(this.currentUser.id, this.activeCall.targetId));
-        
         let pollCount = 0;
         let lastAudioSize = 0;
+        this.audioQueue = []; // Cola para manejar audio entrante
         
+        //  OPTIMIZAR: Polling más inteligente
         this.audioPollInterval = setInterval(async () => {
             if (!this.isInCall) {
                 clearInterval(this.audioPollInterval);
@@ -1481,20 +1481,29 @@ class ChatApp {
             try {
                 const audioData = await this.chatService.getCallAudio(this.currentUser.id);
                 
-                if (audioData && audioData.length > 100) {
+                if (audioData && audioData.length > 500) {
                     lastAudioSize = audioData.length;
-                    console.log(` Audio recibido - Poll: ${pollCount} | Tamaño: ${audioData.length} chars`);
-                    await this.playAudioDirectly(audioData);
+                    
+                    //  OPTIMIZAR: Log menos frecuente para evitar spam
+                    if (pollCount % 5 === 0) {
+                        console.log(` Audio recibido - Poll: ${pollCount} | Tamaño: ${audioData.length} chars`);
+                    }
+                    
+                    //  OPTIMIZAR: Reproducir inmediatamente sin esperar
+                    this.playAudioDirectly(audioData).catch(error => {
+                        console.error("Error en reproducción:", error);
+                    });
+                    
                 } else {
-                    // Log detallado del estado
-                    if (pollCount === 1 || pollCount % 5 === 0) {
-                        console.log(` Poll ${pollCount} - Audio: ${audioData ? audioData.length + ' chars' : 'null'} | Último audio válido: ${lastAudioSize} chars`);
+                    // Log reducido para evitar spam
+                    if (pollCount === 1 || pollCount % 20 === 0) {
+                        console.log(` Poll ${pollCount} - Esperando audio...`);
                     }
                 }
             } catch (error) {
                 console.error(" Error en polling:", error);
             }
-        }, 400);
+        }, 80); //  OPTIMIZAR: 100ms → 80ms para mejor latencia
     }
 
     // Método auxiliar para calcular callId (igual que el servidor)
@@ -1516,25 +1525,33 @@ class ChatApp {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
                 
-                // Convertir a Int16Array (formato del profesor)
                 const int16Data = new Int16Array(bytes.buffer);
                 
-                // Crear AudioContext
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                //  OPTIMIZAR: Usar el mismo sample rate (48kHz)
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 48000,
+                    latencyHint: 'playback'  //  Optimizado para reproducción
+                });
                 
-                // Crear buffer de audio (16kHz, mono - similar al profesor)
-                const audioBuffer = audioContext.createBuffer(1, int16Data.length, 16000);
+                // Crear buffer de audio (48kHz, mono)
+                const audioBuffer = audioContext.createBuffer(1, int16Data.length, 48000);
                 const channelData = audioBuffer.getChannelData(0);
                 
-                // Convertir Int16 back to Float32
+                //  OPTIMIZAR: Conversión mejorada con normalización
                 for (let i = 0; i < int16Data.length; i++) {
-                    channelData[i] = int16Data[i] / 32768;
+                    channelData[i] = int16Data[i] / 32768.0;
                 }
                 
                 // Crear fuente y reproducir
                 const source = audioContext.createBufferSource();
                 source.buffer = audioBuffer;
-                source.connect(audioContext.destination);
+                
+                //  OPTIMIZAR: Agregar control de ganancia para mejor calidad
+                const gainNode = audioContext.createGain();
+                gainNode.gain.value = 1.2; //  Ligero boost para mejor audibilidad
+                
+                source.connect(gainNode);
+                gainNode.connect(audioContext.destination);
                 
                 source.onended = () => {
                     console.log(" Audio PCM reproducido completamente");
@@ -1542,8 +1559,15 @@ class ChatApp {
                     resolve();
                 };
                 
+                //  OPTIMIZAR: Manejo de errores mejorado
+                source.onerror = (error) => {
+                    console.error(" Error en source audio:", error);
+                    audioContext.close();
+                    resolve();
+                };
+                
                 source.start(0);
-                console.log(" Audio PCM reproduciéndose...");
+                console.log(" Audio PCM reproduciéndose (48kHz)...");
                 
             } catch (error) {
                 console.error(" Error reproduciendo audio PCM:", error);
