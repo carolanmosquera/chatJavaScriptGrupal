@@ -1,126 +1,103 @@
-# 💬 ChatApp Local con Arquitectura Distribuida (Java Backend + Node.js HTTP Proxy)
+# Sistema de Chat
 
-Esta es una aplicación de chat de texto que permite la comunicación en **tiempo real** entre múltiples usuarios conectados a la **misma red local (LAN)**. La aplicación utiliza una arquitectura de doble componente: un **Backend** (Java) para la lógica de negocio y gestión de la comunicación, y un **Proxy/Frontend** (Node.js) que utiliza **únicamente HTTP** (mediante **Polling**) para la comunicación con el cliente, sin requerir WebSocket ni Spring Boot.
+Este proyecto consiste en un sistema de mensajería en tiempo real desarrollado con una arquitectura Cliente-Servidor. Permite la creación de salas de chat, mensajería privada y grupal, envío de notas de voz y realización de llamadas de audio directamente desde el navegador.
 
-## ✨ Características Principales
+##  Características Principales
 
-* ✅ Comunicación HTTP mediante Polling para actualización automática.
-* ✅ Arquitectura Cliente-Servidor-Backend distribuida.
-* ✅ Chat privado entre usuarios.
-* ✅ Chat grupal.
-* ✅ Interfaz moderna y *responsive* (HTML, CSS y JavaScript *vanilla*).
-* ✅ Almacenamiento de datos en memoria (los datos se pierden al reiniciar el servidor).
+*   **Gestión de Grupos:** Creación y participación en grupos de chat.
+*   **Mensajería en Tiempo Real:** Envío de mensajes de texto a usuarios específicos o grupos con actualización dinámica.
+*   **Historial Multimedia:** Visualización del historial de conversaciones, incluyendo texto y notas de voz.
+*   **Comunicación de Voz:**
+    *   Envío de notas de voz.
+    *   Llamadas de voz en tiempo real utilizando procesamiento de audio en el navegador y transmisión vía WebSockets/RPC.
 
----
-
-## 🛠️ Requisitos del Sistema (Servidor)
-
-Asegúrese de tener instaladas las siguientes herramientas en el computador que actuará como **servidor**:
-
-* **Java** (versión **21** o superior)
-* **Gradle** (versión **9** o superior)
-* **Node.js** (versión 14 o superior)
-* **npm** (incluido con Node.js)
-
----
-
-## 🚀 Guía de Inicio Rápido
-
-Para iniciar la aplicación, se requiere abrir **dos terminales** en el computador que actuará como **servidor**.
-
-### 1. Inicio del Backend (Terminal 1)
-
-El Backend es el núcleo de la lógica de negocio y la gestión de la comunicación (Java).
-
-1.  **Navegue al directorio del backend:**
-    ```bash
-    cd backend
-    ```
-2.  **Compilación y Construcción (Solo la primera vez o después de cambios):**
-    Este paso compila el código y genera el archivo ejecutable (`.jar`).
-    ```bash
-    ./gradlew clean build
-    ```
-3.  **Ejecución del Backend:**
-    Una vez compilado, inicie el servidor de backend.
-    ```bash
-    java -jar build/libs/backend-1.0-SNAPSHOT.jar
-    ```
-
-### 2. Inicio del Proxy/Frontend (Terminal 2)
-
-El proxy actúa como intermediario HTTP y también aloja el frontend (la interfaz de usuario).
-
-1.  **Navegue al directorio del proxy:**
-    ```bash
-    cd proxy_http
-    ```
-2.  **Instale las dependencias (Solo la primera vez):**
-    ```bash
-    npm install
-    ```
-3.  **Ejecución del Proxy y Frontend:**
-    Este comando inicia el servidor proxy y hace que el frontend esté disponible.
-    ```bash
-    npm start
-    ```
-> **Nota Importante:** Al iniciar, el sistema mostrará la **dirección IP y el puerto** en el que está activo el Proxy. Esta dirección es la que deben usar los clientes para conectarse. *Ejemplo: `Proxy activo en 192.168.1.7:3000`*
-
----
-
-## 🔗 Conexión de Clientes y Uso
-
-Los clientes deben estar en la **misma red local (LAN)** que el servidor.
-
-1.  Abre tu navegador web.
-2.  Ve a la dirección del servidor usando su **IP** y el **puerto** (generalmente `3000`) proporcionado por la Terminal 2.
-    * **Formato de la URL:** `http://(IP del servidor):(Puerto)`
-    * **Ejemplo:** `http://192.168.1.7:3000` (o `http://localhost:3000` si es el servidor)
-3.  Ingresa tu nombre de usuario cuando la aplicación lo solicite.
-
-### Uso de la Aplicación
-
-* **Chat Privado (Individual):**
-    * Seleccione un usuario de la lista de contactos (lado derecho).
-    * Escriba su mensaje y presione Enter o haga clic en "Enviar".
-* **Chat Grupal:**
-    * Haga clic en el botón **`+ Grupo`** para crear un nuevo grupo.
-    * Ingrese el **nombre** del grupo.
-    * Ingrese los **nombres de los miembros** a incluir, separados por una **coma** (`,`).
-    * Seleccione el grupo de la lista para comenzar a chatear.
-
----
-
-## 💻 Arquitectura y Endpoints
-
-El proyecto se estructura con dos componentes principales:
-
-| Componente | Tecnología | Rol Principal | Comunicación Cliente-Proxy |
-| :--- | :--- | :--- | :--- |
-| **Proxy/Frontend** | Node.js/Express, HTML/CSS/JS *Vanilla* | Aloja el Frontend y gestiona la comunicación HTTP con los clientes. | **HTTP REST API** |
-| **Backend** | Java 21/Gradle | Lógica de negocio y gestión de la comunicación centralizada. | **Polling HTTP** para actualizaciones |
-
-### Endpoints API del Proxy HTTP (Comunicación Cliente-Proxy)
-
-El Proxy expone los siguientes *endpoints* HTTP para la comunicación con el cliente:
-
-* `POST /api/register` - Registrar un nuevo usuario.
-* `GET /api/users` - Obtener lista de usuarios.
-* `GET /api/groups` - Obtener lista de grupos.
-* `POST /api/groups` - Crear un nuevo grupo.
-* `GET /api/messages/:type/:name` - Obtener mensajes (*type*: `'user'` o `'group'`).
-* `POST /api/send` - Enviar un mensaje.
-* `GET /api/check-updates` - Verificar si hay nuevos mensajes (utilizado para el Polling).
-
----
-
-## 🧑‍💻 Autores y Contribuyentes
-
-Este proyecto fue desarrollado por los siguientes estudiantes:
+## 👥 Autores y Contribuyentes
 
 | Nombre | Código |
 | :--- | :--- |
-| **Camilo Andres Martinez Moreno** | A00405205 |
-| **Martin Borrero Herrera** | A00403871 |
-| **Daniel Santiago Fajardo** | A00405139 |
-| **Carol Andrea Mosquera** | A00403934 |
+| Camilo Andres Martinez Moreno | A00405205 |
+| Martin Borrero Herrera | A00403871 |
+| Daniel Santiago Fajardo | A00405139 |
+| Carol Andrea Mosquera | A00403934 |
+
+---
+
+##  Requisitos del Sistema
+
+Para ejecutar el servidor y compilar el proyecto, asegúrese de tener instaladas las siguientes herramientas:
+
+*   **Java:** Versión 21 o superior.
+*   **Gradle:** Versión 9 o superior.
+*   **Node.js:** Versión 14 o superior (incluye npm).
+*   **Python 3:** Para desplegar el cliente web localmente.
+
+---
+
+##  Instrucciones de Ejecución
+
+Siga estos pasos para poner en marcha el sistema.
+
+### 1. Iniciar el Servidor (Backend)
+Una sola persona (el host) debe ejecutar el servidor. Desde la raíz del proyecto, ejecute los siguientes comandos en su terminal:
+
+1.  Generar el ejecutable:
+    ```bash
+    .\gradlew jar
+    ```
+2.  Ejecutar el servidor:
+    ```bash
+    java -jar build\libs\proyectoChatGruapal.jar
+    ```
+
+### 2. Iniciar el Cliente (Frontend)
+Tanto el host (si desea usar la app) como el resto de los integrantes deben ejecutar el cliente.( y estos deben de estar conectados a la misma red del host)
+
+1.  Navegue a la carpeta del cliente web:
+    ```bash
+    cd web-client
+    ```
+2.  Levante el servidor HTTP con Python:
+    ```bash
+    python3 -m http.server 8080
+    ```
+3.  Abra su navegador web e ingrese a:
+    *   `http://localhost:8080`
+
+---
+
+##  Flujo de Comunicación Cliente-Servidor
+
+### Arquitectura General
+El sistema utiliza **ZeroC Ice** como middleware para la comunicación, operando sobre **WebSockets** en el puerto 8080.
+*   **Cliente:** JavaScript ejecutándose en el navegador.
+*   **Servidor:** Lógica de negocio en Java.
+
+### Modelo de Comunicación
+1.  **Cliente → Servidor (RPC):** El cliente realiza llamadas directas a métodos del servidor (como funciones locales). Ice serializa los datos y gestiona la respuesta.
+2.  **Servidor → Cliente (Polling):** El servidor **no** envía datos automáticamente (Push). El cliente consulta periódicamente (cada segundo) si hay novedades.
+
+### Flujos por Funcionalidad
+
+#### 1️ Mensajes de Texto
+*   **Envío:** El usuario envía el mensaje → Cliente llama al método RPC → Servidor valida, asigna ID y Timestamp → Guarda en memoria RAM → Confirma recepción.
+*   **Recepción:** El cliente hace *polling* cada segundo → Servidor entrega lista de mensajes → Cliente filtra y renderiza solo los nuevos.
+
+#### 2️ Notas de Voz (Audios)
+*   **Grabación:** El navegador captura audio (WebM/Opus) y lo convierte a **Base64**.
+*   **Envío:** Se envía al servidor como un mensaje de texto especial (tipo `AUDIO`).
+*   **Reproducción:** El cliente receptor detecta el tipo `AUDIO`, decodifica el Base64 y genera un elemento HTML de audio para reproducir.
+
+#### 3️ Llamadas de Voz 
+El servidor actúa como un **Relay** (retransmisor) y no guarda el audio en disco.
+
+*   **Establecimiento:**
+    *   Cliente A notifica intención de llamada.
+    *   Servidor crea registro en memoria y buffer.
+    *   Cliente B detecta la llamada (vía polling) y acepta.
+
+*   **Transmisión:**
+    *   **Captura:** Ambos clientes capturan audio y lo fragmentan en trozos pequeños (~50ms) formato PCM convertidos a Base64.
+    *   **Envío:** Cada fragmento se envía al servidor identificando al destinatario.
+    *   **Recepción:** Ambos clientes consultan al servidor cada **400ms**. El servidor entrega el último fragmento disponible, lo elimina del buffer, y el cliente lo reproduce inmediatamente.
+
+*   **Finalización:** Al terminar la llamada, el servidor limpia los registros y buffers de memoria.
