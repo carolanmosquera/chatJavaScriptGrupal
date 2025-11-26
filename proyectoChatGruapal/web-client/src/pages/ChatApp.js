@@ -22,6 +22,7 @@ class ChatApp {
         this.pollInterval = null;
         this.selectedGroup = null;
         this.userGroups = new Set(); // Grupos a los que el usuario pertenece
+        this.historyModal = null;
 
         // Variables de audio
         this.mediaRecorder = null;
@@ -69,6 +70,15 @@ class ChatApp {
         this.messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.sendMessage();
         });
+
+         const historyBtn = document.getElementById('historyBtn');
+        if (historyBtn) {
+            historyBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.showHistory();
+            });
+        }
 
         // ========== AGREGAR BOTÓN DE LLAMADA AQUÍ ==========
         const voiceCallBtn = document.getElementById('voiceCallBtn');
@@ -123,6 +133,101 @@ class ChatApp {
                 this.sendAudio();
             });
         }
+    }
+
+    async showHistory() {
+        try {
+            console.log(" Mostrando historial simple...");
+            
+            // Obtener solo los mensajes del chat general (que ya funcionan)
+            const messages = await this.chatService.getMessages();
+            
+            // Crear modal simple con solo el texto
+            this.createSimpleHistoryModal(messages);
+            
+        } catch (error) {
+            console.error(" Error mostrando historial:", error);
+            alert("Error al mostrar historial: " + error.message);
+        }
+    }
+
+    // Método para mostrar el historial - SIN FECHA
+    createSimpleHistoryModal(messages) {
+        // Cerrar modal existente
+        if (this.historyModal) {
+            this.historyModal.remove();
+        }
+        
+        // Crear modal básico
+        this.historyModal = document.createElement('div');
+        this.historyModal.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            width: 80%;
+            max-width: 500px;
+            max-height: 70vh;
+            overflow-y: auto;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+        `;
+        
+        // Crear contenido simple
+        let content = '<h3 style="margin: 0 0 15px 0; color: #333;">📋 Historial de Mensajes</h3>';
+        
+        if (messages.length === 0) {
+            content += '<p style="color: #666; text-align: center;">No hay mensajes</p>';
+        } else {
+            content += '<div style="max-height: 300px; overflow-y: auto;">';
+            
+            messages.forEach(msg => {
+                content += `
+                    <div style="margin-bottom: 10px; padding: 8px; border-left: 3px solid #007bff; background: #f8f9fa;">
+                        <div style="font-size: 14px; color: #333; margin-bottom: 5px;">
+                            <strong>${this.escapeHtml(msg.senderName)}</strong>
+                        </div>
+                        <div style="color: #333;">
+                            ${this.escapeHtml(msg.content)}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            content += '</div>';
+        }
+        
+        content += `
+            <button onclick="this.closest('.history-modal').remove()" 
+                    style="margin-top: 15px; padding: 8px 15px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                Cerrar
+            </button>
+        `;
+        
+        this.historyModal.innerHTML = content;
+        this.historyModal.className = 'history-modal';
+        
+        // Fondo oscuro
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        `;
+        overlay.onclick = () => {
+            this.historyModal.remove();
+            overlay.remove();
+        };
+        
+        document.body.appendChild(overlay);
+        document.body.appendChild(this.historyModal);
     }
 
     async connect() {

@@ -67,6 +67,7 @@ module Chat {
         // Messages
         void sendMessage(string userId, string content, MessageTypeEnum type);
         MessageList getMessages();
+        MessageList getCompleteHistory(); 
 
         // Private Messages
         void sendPrivateMessage(string userId, string targetUserId, string content, MessageTypeEnum type);

@@ -41,7 +41,7 @@ public class ChatServiceImpl implements ChatService, Subject {
         // Primero intentar con las operaciones de ChatService
         String[] chatServiceOps = {
             "createGroup", "endVoiceCall", "getActiveCall", "getCallAudio", "getGroupMessages", "getGroups",
-            "getMessages", "getPrivateMessages", "getUsers", "ice_id", "ice_ids",
+            "getMessages", "getPrivateMessages", "getUsers", "ice_id", "ice_ids", "getCompleteHistory",
             "ice_isA", "ice_ping", "joinChat", "joinGroup", "leaveChat",
             "sendGroupMessage", "sendMessage", "sendPrivateMessage", "sendVoiceData", "startVoiceCall"
         };
@@ -176,6 +176,36 @@ public class ChatServiceImpl implements ChatService, Subject {
         return messages.stream()
             .map(Message::toDTO)
             .toArray(MessageDTO[]::new);
+    }
+
+    @Override
+    public MessageDTO[] getCompleteHistory(Current current) {
+        try {
+            System.out.println(" Solicitando historial completo de mensajes...");
+            
+            // 1. Obtener todos los mensajes del chat general
+            List<Message> allMessages = new ArrayList<>(messages);
+            
+            // 2. Agregar todos los mensajes privados
+            for (List<Message> privateChatMessages : privateMessages.values()) {
+                allMessages.addAll(privateChatMessages);
+            }
+            
+            // 3. Agregar todos los mensajes de grupos
+            for (List<Message> groupChatMessages : groupMessages.values()) {
+                allMessages.addAll(groupChatMessages);
+            }
+            
+            System.out.println(" Historial completo generado - Total mensajes: " + allMessages.size());
+            
+            return allMessages.stream()
+                .map(Message::toDTO)
+                .toArray(MessageDTO[]::new);
+                
+        } catch (Exception e) {
+            System.err.println(" Error generando historial: " + e.getMessage());
+            return new MessageDTO[0];
+        }
     }
 
     // ========== MÉTODOS DE MENSAJES PRIVADOS ==========
@@ -448,7 +478,7 @@ public class ChatServiceImpl implements ChatService, Subject {
     }
 
     @Override
-public synchronized String getCallAudio(String userId, Current current) {
+    public synchronized String getCallAudio(String userId, Current current) {
         // 1. Buscar llamada activa
         VoiceCall activeCall = null;
         for (VoiceCall call : activeCalls.values()) {
@@ -457,46 +487,46 @@ public synchronized String getCallAudio(String userId, Current current) {
                 break;
             }
         }
-        
+            
         if (activeCall == null) {
-            System.out.println("🔍 getCallAudio: No hay llamada activa para " + userId);
+            System.out.println(" getCallAudio: No hay llamada activa para " + userId);
             return "";
         }
-        
+            
         // 2. Obtener otro participante
         String otherUserId = activeCall.getOtherParticipant(userId);
         if (otherUserId == null) {
-            System.out.println("🔍 getCallAudio: No se encontró otro participante");
+            System.out.println(" getCallAudio: No se encontró otro participante");
             return "";
         }
-        
+            
         String callId = activeCall.getCallId();
         Map<String, String> audioMap = callAudioData.get(callId);
-        
+            
         if (audioMap == null) {
-            System.out.println("🔍 getCallAudio: No hay mapa de audio para " + callId);
+            System.out.println(" getCallAudio: No hay mapa de audio para " + callId);
             return "";
         }
 
-         //  LOG MEJORADO: Ver qué hay en el mapa ANTES de buscar
+        //  LOG MEJORADO: Ver qué hay en el mapa ANTES de buscar
         System.out.println(" getCallAudio - Usuario: " + userId + 
-                        " | Buscando audio de: " + otherUserId +
-                        " | Claves disponibles: " + audioMap.keySet());
-        
+                            " | Buscando audio de: " + otherUserId +
+                            " | Claves disponibles: " + audioMap.keySet());
+            
         // 3.  MANTENER remove() por ahora - pero con mejor logging
         String audio = audioMap.remove(otherUserId);
-        
+            
         if (audio != null && audio.length() > 100) {
             System.out.println(" Audio ENTREGADO - CallID: " + callId + 
-                            " | Para: " + userId + " | De: " + otherUserId +
-                            " | Tamaño: " + audio.length() + " chars" +
-                            " | Entradas restantes: " + audioMap.size());
+                                " | Para: " + userId + " | De: " + otherUserId +
+                                " | Tamaño: " + audio.length() + " chars" +
+                                " | Entradas restantes: " + audioMap.size());
             return audio;
         } else {
             // Log detallado de por qué no hay audio
             if (audio == null) {
                 System.out.println(" getCallAudio: Audio NULL para " + otherUserId + 
-                                " | Claves en mapa: " + audioMap.keySet());
+                                    " | Claves en mapa: " + audioMap.keySet());
             } else {
                 System.out.println(" getCallAudio: Audio muy corto: " + audio.length() + " chars");
             }

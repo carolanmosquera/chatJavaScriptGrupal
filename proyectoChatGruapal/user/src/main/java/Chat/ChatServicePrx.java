@@ -207,6 +207,43 @@ public interface ChatServicePrx extends com.zeroc.Ice.ObjectPrx
         return f;
     }
 
+    default MessageDTO[] getCompleteHistory()
+    {
+        return getCompleteHistory(com.zeroc.Ice.ObjectPrx.noExplicitContext);
+    }
+
+    default MessageDTO[] getCompleteHistory(java.util.Map<String, String> context)
+    {
+        return _iceI_getCompleteHistoryAsync(context, true).waitForResponse();
+    }
+
+    default java.util.concurrent.CompletableFuture<MessageDTO[]> getCompleteHistoryAsync()
+    {
+        return _iceI_getCompleteHistoryAsync(com.zeroc.Ice.ObjectPrx.noExplicitContext, false);
+    }
+
+    default java.util.concurrent.CompletableFuture<MessageDTO[]> getCompleteHistoryAsync(java.util.Map<String, String> context)
+    {
+        return _iceI_getCompleteHistoryAsync(context, false);
+    }
+
+    /**
+     * @hidden
+     * @param context -
+     * @param sync -
+     * @return -
+     **/
+    default com.zeroc.IceInternal.OutgoingAsync<MessageDTO[]> _iceI_getCompleteHistoryAsync(java.util.Map<String, String> context, boolean sync)
+    {
+        com.zeroc.IceInternal.OutgoingAsync<MessageDTO[]> f = new com.zeroc.IceInternal.OutgoingAsync<>(this, "getCompleteHistory", null, sync, null);
+        f.invoke(true, context, null, null, istr -> {
+                     MessageDTO[] ret;
+                     ret = MessageListHelper.read(istr);
+                     return ret;
+                 });
+        return f;
+    }
+
     default void sendPrivateMessage(String userId, String targetUserId, String content, MessageTypeEnum type)
     {
         sendPrivateMessage(userId, targetUserId, content, type, com.zeroc.Ice.ObjectPrx.noExplicitContext);
